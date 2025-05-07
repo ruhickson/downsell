@@ -199,10 +199,14 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
 const App: React.FC = () => {
   const [csvData, setCsvData] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [dragActive, setDragActive] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const inputRef = React.useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    setSelectedFile(file);
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -211,6 +215,37 @@ const App: React.FC = () => {
         setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
       },
     });
+  };
+
+  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true);
+    } else if (e.type === 'dragleave') {
+      setDragActive(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragActive(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      setSelectedFile(e.dataTransfer.files[0]);
+      Papa.parse(e.dataTransfer.files[0], {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results: Papa.ParseResult<Transaction>) => {
+          setCsvData(results.data as Transaction[]);
+          setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
+        },
+      });
+    }
+  };
+
+  const handleClick = () => {
+    inputRef.current?.click();
   };
 
   const totalTransactions = csvData.length;
@@ -262,7 +297,28 @@ const App: React.FC = () => {
   return (
     <div className="dashboard-container">
       <h1>Bank Statement Analyzer</h1>
-      <input type="file" accept=".csv" onChange={handleFileUpload} />
+      <div className={"upload-area" + (dragActive ? " drag-active" : "")}
+           onClick={handleClick}
+           onDragEnter={handleDrag}
+           onDragOver={handleDrag}
+           onDragLeave={handleDrag}
+           onDrop={handleDrop}
+           style={{ marginBottom: '2rem' }}>
+        <input
+          type="file"
+          accept=".csv"
+          ref={inputRef}
+          style={{ display: 'none' }}
+          onChange={handleFileUpload}
+        />
+        <div className="upload-prompt">
+          {selectedFile ? (
+            <span><b>{selectedFile.name}</b> selected</span>
+          ) : (
+            <span>Drag and drop your CSV here, or <span className="upload-link">click to upload</span></span>
+          )}
+        </div>
+      </div>
       {subscriptions.length > 0 && (
         <div className="charts-row">
           <div className="chart-col">
