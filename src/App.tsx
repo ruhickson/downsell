@@ -333,7 +333,7 @@ const App: React.FC = () => {
 
   return (
     <div className="dashboard-container">
-      <h1>Bank Statement Analyzer</h1>
+      <h1>Analyze Your Subscriptions</h1>
       <div className={"upload-area" + (dragActive ? " drag-active" : "")}
            onClick={handleClick}
            onDragEnter={handleDrag}
@@ -354,6 +354,24 @@ const App: React.FC = () => {
           ) : (
             <span>Drag and drop your CSV here, or <span className="upload-link">click to upload</span></span>
           )}
+        </div>
+      </div>
+      <div className="big-numbers-row">
+        <div className="big-number-tile">
+          <div className="big-number-label">Total Transactions</div>
+          <div className="big-number-value">{totalTransactions.toLocaleString()}</div>
+        </div>
+        <div className="big-number-tile">
+          <div className="big-number-label">Potential Subscriptions</div>
+          <div className="big-number-value">{totalPotentialSubscriptions.toLocaleString()}</div>
+        </div>
+        <div className="big-number-tile">
+          <div className="big-number-label">Total Spend</div>
+          <div className="big-number-value">€{totalOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+        </div>
+        <div className="big-number-tile">
+          <div className="big-number-label">Subscription Spend</div>
+          <div className="big-number-value">€{totalSubscriptions.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
         </div>
       </div>
       {subscriptions.length > 0 && (
