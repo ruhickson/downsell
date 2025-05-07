@@ -20,6 +20,7 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import jsPDF from 'jspdf';
+import { createClient } from '@supabase/supabase-js';
 
 ChartJS.register(
   CategoryScale,
@@ -230,6 +231,24 @@ const TAB_LABELS = [
   { label: 'About', icon: 'ℹ️' },
 ];
 
+const supabase = createClient('https://mnmjdfopmokkyrtqfhws.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1ubWpkZm9wbW9ra3lydHFmaHdzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDY2MjQ0MDYsImV4cCI6MjA2MjIwMDQwNn0.K7ZSTV9LSgw2onk7zvpMMKSM9ClvW64dWfzrZfZCOvU');
+
+// Fetch stats
+async function fetchStats() {
+  const { data } = await supabase.from('statistics').select('*');
+  if (data) {
+    const stats: Record<string, number> = {};
+    data.forEach(row => { stats[row.key] = row.value; });
+    return stats;
+  }
+  return {};
+}
+
+// Increment stat
+async function incrementStat(key: string, amount = 1) {
+  await supabase.rpc('increment_stat', { stat_key: key, inc: amount });
+}
+
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('Analysis');
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -253,47 +272,7 @@ const App: React.FC = () => {
   ];
 
   // --- About page statistics ---
-  const [visitCount, setVisitCount] = useState<number>(() => {
-    const stored = localStorage.getItem('downsell_visit_count');
-    return stored ? parseInt(stored, 10) : 0;
-  });
-  const [filesUploaded, setFilesUploaded] = useState<number>(() => {
-    const stored = localStorage.getItem('downsell_files_uploaded');
-    return stored ? parseInt(stored, 10) : 0;
-  });
-  const [rowsAnalyzed, setRowsAnalyzed] = useState<number>(() => {
-    const stored = localStorage.getItem('downsell_rows_analyzed');
-    return stored ? parseInt(stored, 10) : 0;
-  });
-  const [savingsRecommended, setSavingsRecommended] = useState<number>(() => {
-    const stored = localStorage.getItem('downsell_savings_recommended');
-    return stored ? parseFloat(stored) : 0;
-  });
-  const [reportsDownloaded, setReportsDownloaded] = useState<number>(() => {
-    const stored = localStorage.getItem('downsell_reports_downloaded');
-    return stored ? parseInt(stored, 10) : 0;
-  });
-
-  // Increment visit count on mount
-  React.useEffect(() => {
-    const newCount = visitCount + 1;
-    setVisitCount(newCount);
-    localStorage.setItem('downsell_visit_count', newCount.toString());
-  }, []);
-
-  // Update localStorage when files uploaded, rows analyzed, savings, or reports change
-  React.useEffect(() => {
-    localStorage.setItem('downsell_files_uploaded', filesUploaded.toString());
-  }, [filesUploaded]);
-  React.useEffect(() => {
-    localStorage.setItem('downsell_rows_analyzed', rowsAnalyzed.toString());
-  }, [rowsAnalyzed]);
-  React.useEffect(() => {
-    localStorage.setItem('downsell_savings_recommended', savingsRecommended.toString());
-  }, [savingsRecommended]);
-  React.useEffect(() => {
-    localStorage.setItem('downsell_reports_downloaded', reportsDownloaded.toString());
-  }, [reportsDownloaded]);
+  const [stats, setStats] = useState<Record<string, number>>({});
 
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
@@ -310,8 +289,9 @@ const App: React.FC = () => {
       complete: (results: Papa.ParseResult<Transaction>) => {
         setCsvData(results.data as Transaction[]);
         setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
-        setFilesUploaded(f => f + 1);
-        setRowsAnalyzed(r => r + (results.data as Transaction[]).length);
+        incrementStat('files_uploaded');
+        incrementStat('rows_analyzed', (results.data as Transaction[]).length);
+        refreshStats();
       },
     });
   };
@@ -338,8 +318,9 @@ const App: React.FC = () => {
         complete: (results: Papa.ParseResult<Transaction>) => {
           setCsvData(results.data as Transaction[]);
           setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
-          setFilesUploaded(f => f + 1);
-          setRowsAnalyzed(r => r + (results.data as Transaction[]).length);
+          incrementStat('files_uploaded');
+          incrementStat('rows_analyzed', (results.data as Transaction[]).length);
+          refreshStats();
         },
       });
     }
@@ -461,14 +442,16 @@ const App: React.FC = () => {
   };
 
   // Placeholder: increment savingsRecommended when an AI suggestion is shown (simulate €5 per suggestion)
-  const handleShowAiSuggestion = (sub: Subscription) => {
+  const handleShowAiSuggestion = async (sub: Subscription) => {
     fetchAiSuggestion(sub);
-    setSavingsRecommended(s => s + 5); // Simulate €5 savings per suggestion
+    await incrementStat('savings_recommended', 5); // Simulate €5 savings per suggestion
+    refreshStats();
   };
 
   // Generate PDF report for top 4 optimizations (weekly/monthly)
   const handleDownloadReport = async () => {
-    setReportsDownloaded(r => r + 1);
+    await incrementStat('reports_downloaded');
+    refreshStats();
     // Filter top 4 subscriptions (weekly/monthly) by total spent
     const filtered = subscriptions
       .filter(sub => sub.frequencyLabel === 'Weekly' || sub.frequencyLabel === 'Monthly')
@@ -551,31 +534,20 @@ const App: React.FC = () => {
     const stored = localStorage.getItem('downsell_user');
     return stored ? JSON.parse(stored) : null;
   });
-  const [usersSignedIn, setUsersSignedIn] = useState<number>(() => {
-    const stored = localStorage.getItem('downsell_users_signed_in');
-    return stored ? parseInt(stored, 10) : 0;
-  });
 
-  // Persist user in localStorage
+  // On mount, fetch stats
   React.useEffect(() => {
-    if (user) {
-      localStorage.setItem('downsell_user', JSON.stringify(user));
-      // Track unique users by sub or email
-      let usersSet: Set<string> = new Set();
-      const stored = localStorage.getItem('downsell_users_signed_in_set');
-      if (stored) {
-        usersSet = new Set(JSON.parse(stored));
-      }
-      if (user.sub || user.email) {
-        usersSet.add(user.sub || user.email);
-        localStorage.setItem('downsell_users_signed_in_set', JSON.stringify(Array.from(usersSet)));
-        localStorage.setItem('downsell_users_signed_in', usersSet.size.toString());
-        setUsersSignedIn(usersSet.size);
-      }
-    } else {
-      localStorage.removeItem('downsell_user');
-    }
-  }, [user]);
+    fetchStats().then(setStats);
+  }, []);
+
+  const refreshStats = async () => {
+    const newStats = await fetchStats();
+    setStats(newStats);
+  };
+
+  React.useEffect(() => {
+    incrementStat('visits').then(refreshStats);
+  }, []);
 
   return (
     <GoogleOAuthProvider clientId="456095468781-fcpgaireqemia7tll1oujqmet5m7m94v.apps.googleusercontent.com">
@@ -1066,12 +1038,11 @@ const App: React.FC = () => {
               <div className="about-stats">
                 <h2>About Downsell</h2>
                 <div className="about-stats-row">
-                  <div className="about-stats-tile"><div className="about-stats-label">Visits</div><div className="about-stats-value">{visitCount}</div></div>
-                  <div className="about-stats-tile"><div className="about-stats-label">Files Uploaded</div><div className="about-stats-value">{filesUploaded}</div></div>
-                  <div className="about-stats-tile"><div className="about-stats-label">Rows Analyzed</div><div className="about-stats-value">{rowsAnalyzed}</div></div>
-                  <div className="about-stats-tile"><div className="about-stats-label">Savings Recommended</div><div className="about-stats-value">€{savingsRecommended.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
-                  <div className="about-stats-tile"><div className="about-stats-label">Reports Downloaded</div><div className="about-stats-value">{reportsDownloaded}</div></div>
-                  <div className="about-stats-tile"><div className="about-stats-label">Users Signed In</div><div className="about-stats-value">{usersSignedIn}</div></div>
+                  <div className="about-stats-tile"><div className="about-stats-label">Visits</div><div className="about-stats-value">{stats.visits || 0}</div></div>
+                  <div className="about-stats-tile"><div className="about-stats-label">Files Uploaded</div><div className="about-stats-value">{stats.files_uploaded || 0}</div></div>
+                  <div className="about-stats-tile"><div className="about-stats-label">Rows Analyzed</div><div className="about-stats-value">{stats.rows_analyzed || 0}</div></div>
+                  <div className="about-stats-tile"><div className="about-stats-label">Savings Recommended</div><div className="about-stats-value">€{(stats.savings_recommended || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
+                  <div className="about-stats-tile"><div className="about-stats-label">Reports Downloaded</div><div className="about-stats-value">{stats.reports_downloaded || 0}</div></div>
                 </div>
                 <p style={{marginTop: '2rem', color: '#bfc9da'}}>These statistics are stored locally in your browser and are not shared with anyone.</p>
               </div>
