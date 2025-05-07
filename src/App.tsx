@@ -20,7 +20,6 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import { GoogleLogin, googleLogout } from '@react-oauth/google';
 import { jwtDecode } from 'jwt-decode';
 import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
 
 ChartJS.register(
   CategoryScale,
