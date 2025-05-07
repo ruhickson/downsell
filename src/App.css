@@ -346,6 +346,9 @@ input[type="file"]:hover {
   color: white;
   font-size: 1.05rem;
   box-shadow: 0 2px 8px rgba(74, 108, 247, 0.07);
+  max-height: 320px;
+  overflow-y: auto;
+  word-break: break-word;
 }
 
 .ai-suggestion-box.error {

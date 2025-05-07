@@ -128,7 +128,9 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
     transactionsByDescription[description].total += amount;
     transactionsByDescription[description].count += 1;
     transactionsByDescription[description].amounts.push(amount);
-    transactionsByDescription[description].maxAmount = Math.max(transactionsByDescription[description].maxAmount, amount);
+    if (Math.abs(amount) > Math.abs(transactionsByDescription[description].maxAmount)) {
+      transactionsByDescription[description].maxAmount = amount;
+    }
     const date =
       (transaction as any)['Completed Date'] ||
       (transaction as any)['Started Date'] ||
