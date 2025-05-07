@@ -190,7 +190,7 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
         total: data.total,
         count: data.count,
         average,
-        maxAmount: data.maxAmount,
+        maxAmount: data.amounts.length > 0 ? -1 * Math.max(...data.amounts.map(Math.abs)) : 0,
         standardDeviation,
         timeSpan,
         frequency,
@@ -704,7 +704,7 @@ const App: React.FC = () => {
                           </tr>
                           <tr>
                             <td>Maximum Payment:</td>
-                            <td>${(-sub.maxAmount).toFixed(2)}</td>
+                            <td>€{(-sub.maxAmount).toFixed(2)}</td>
                           </tr>
                           <tr>
                             <td>Frequency:</td>
