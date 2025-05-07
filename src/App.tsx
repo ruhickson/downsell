@@ -223,6 +223,7 @@ const TAB_LABELS = [
   { label: 'Report', icon: '📄' },
   { label: 'Actions', icon: '⚡' },
   { label: 'Account', icon: '👤' },
+  { label: 'About', icon: 'ℹ️' },
 ];
 
 const App: React.FC = () => {
@@ -247,6 +248,49 @@ const App: React.FC = () => {
     'Daily',
   ];
 
+  // --- About page statistics ---
+  const [visitCount, setVisitCount] = useState<number>(() => {
+    const stored = localStorage.getItem('downsell_visit_count');
+    return stored ? parseInt(stored, 10) : 0;
+  });
+  const [filesUploaded, setFilesUploaded] = useState<number>(() => {
+    const stored = localStorage.getItem('downsell_files_uploaded');
+    return stored ? parseInt(stored, 10) : 0;
+  });
+  const [rowsAnalyzed, setRowsAnalyzed] = useState<number>(() => {
+    const stored = localStorage.getItem('downsell_rows_analyzed');
+    return stored ? parseInt(stored, 10) : 0;
+  });
+  const [savingsRecommended, setSavingsRecommended] = useState<number>(() => {
+    const stored = localStorage.getItem('downsell_savings_recommended');
+    return stored ? parseFloat(stored) : 0;
+  });
+  const [reportsDownloaded, setReportsDownloaded] = useState<number>(() => {
+    const stored = localStorage.getItem('downsell_reports_downloaded');
+    return stored ? parseInt(stored, 10) : 0;
+  });
+
+  // Increment visit count on mount
+  React.useEffect(() => {
+    const newCount = visitCount + 1;
+    setVisitCount(newCount);
+    localStorage.setItem('downsell_visit_count', newCount.toString());
+  }, []);
+
+  // Update localStorage when files uploaded, rows analyzed, savings, or reports change
+  React.useEffect(() => {
+    localStorage.setItem('downsell_files_uploaded', filesUploaded.toString());
+  }, [filesUploaded]);
+  React.useEffect(() => {
+    localStorage.setItem('downsell_rows_analyzed', rowsAnalyzed.toString());
+  }, [rowsAnalyzed]);
+  React.useEffect(() => {
+    localStorage.setItem('downsell_savings_recommended', savingsRecommended.toString());
+  }, [savingsRecommended]);
+  React.useEffect(() => {
+    localStorage.setItem('downsell_reports_downloaded', reportsDownloaded.toString());
+  }, [reportsDownloaded]);
+
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
     setSidebarOpen(false);
@@ -262,6 +306,8 @@ const App: React.FC = () => {
       complete: (results: Papa.ParseResult<Transaction>) => {
         setCsvData(results.data as Transaction[]);
         setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
+        setFilesUploaded(f => f + 1);
+        setRowsAnalyzed(r => r + (results.data as Transaction[]).length);
       },
     });
   };
@@ -288,6 +334,8 @@ const App: React.FC = () => {
         complete: (results: Papa.ParseResult<Transaction>) => {
           setCsvData(results.data as Transaction[]);
           setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
+          setFilesUploaded(f => f + 1);
+          setRowsAnalyzed(r => r + (results.data as Transaction[]).length);
         },
       });
     }
@@ -406,6 +454,18 @@ const App: React.FC = () => {
     } catch (e: any) {
       setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: false, error: e.message || 'Error fetching suggestion' } }));
     }
+  };
+
+  // Placeholder: increment savingsRecommended when an AI suggestion is shown (simulate €5 per suggestion)
+  const handleShowAiSuggestion = (sub: Subscription) => {
+    fetchAiSuggestion(sub);
+    setSavingsRecommended(s => s + 5); // Simulate €5 savings per suggestion
+  };
+
+  // Placeholder: increment reportsDownloaded (simulate a download button on Report tab)
+  const handleDownloadReport = () => {
+    setReportsDownloaded(r => r + 1);
+    // ... actual download logic would go here ...
   };
 
   return (
@@ -833,7 +893,7 @@ const App: React.FC = () => {
                                 </div>
                               )}
                               <div className="subscription-actions">
-                                <button className="optimize-btn" onClick={() => fetchAiSuggestion(sub)} disabled={aiSuggestions[sub.description]?.loading}>
+                                <button className="optimize-btn" onClick={() => handleShowAiSuggestion(sub)} disabled={aiSuggestions[sub.description]?.loading}>
                                   {aiSuggestions[sub.description]?.loading ? 'Getting suggestion...' : 'Optimize'}
                                 </button>
                                 <button className="alt-btn">Find Alternative (coming soon)</button>
@@ -862,13 +922,30 @@ const App: React.FC = () => {
             </>
           )}
           {activeTab === 'Report' && (
-            <div className="tab-placeholder"><h2>Report</h2><p>Report features coming soon.</p></div>
+            <div className="tab-placeholder">
+              <h2>Report</h2>
+              <p>Report features coming soon.</p>
+              <button className="optimize-btn" onClick={handleDownloadReport}>Simulate Report Download</button>
+            </div>
           )}
           {activeTab === 'Actions' && (
             <div className="tab-placeholder"><h2>Actions</h2><p>Actions and recommendations will appear here.</p></div>
           )}
           {activeTab === 'Account' && (
             <div className="tab-placeholder"><h2>Account</h2><p>Account management features coming soon.</p></div>
+          )}
+          {activeTab === 'About' && (
+            <div className="about-stats">
+              <h2>About Downsell</h2>
+              <div className="about-stats-row">
+                <div className="about-stats-tile"><div className="about-stats-label">Visits</div><div className="about-stats-value">{visitCount}</div></div>
+                <div className="about-stats-tile"><div className="about-stats-label">Files Uploaded</div><div className="about-stats-value">{filesUploaded}</div></div>
+                <div className="about-stats-tile"><div className="about-stats-label">Rows Analyzed</div><div className="about-stats-value">{rowsAnalyzed}</div></div>
+                <div className="about-stats-tile"><div className="about-stats-label">Savings Recommended</div><div className="about-stats-value">€{savingsRecommended.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div></div>
+                <div className="about-stats-tile"><div className="about-stats-label">Reports Downloaded</div><div className="about-stats-value">{reportsDownloaded}</div></div>
+              </div>
+              <p style={{marginTop: '2rem', color: '#bfc9da'}}>These statistics are stored locally in your browser and are not shared with anyone.</p>
+            </div>
           )}
         </main>
       </div>
