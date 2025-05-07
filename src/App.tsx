@@ -227,6 +227,7 @@ const TAB_LABELS = [
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('Analysis');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [csvData, setCsvData] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
@@ -245,6 +246,11 @@ const App: React.FC = () => {
     'Three or more times a week',
     'Daily',
   ];
+
+  const handleSidebarTabClick = (tab: string) => {
+    setActiveTab(tab);
+    setSidebarOpen(false);
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -405,14 +411,14 @@ const App: React.FC = () => {
   return (
     <div className="app-layout">
       {/* Sidebar */}
-      <aside className="sidebar">
+      <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
         <div className="sidebar-logo">🪙</div>
         <nav className="sidebar-nav">
           {TAB_LABELS.map(tab => (
             <div
               key={tab.label}
               className={activeTab === tab.label ? 'sidebar-item sidebar-item-active' : 'sidebar-item'}
-              onClick={() => setActiveTab(tab.label)}
+              onClick={() => handleSidebarTabClick(tab.label)}
             >
               <span className="sidebar-icon">{tab.icon}</span>
               <span className="sidebar-label">{tab.label}</span>
@@ -424,9 +430,18 @@ const App: React.FC = () => {
       <div className="main-area">
         {/* Top Bar */}
         <header className="topbar">
+          {/* Hamburger for mobile */}
+          <button
+            className="topbar-hamburger"
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            aria-label="Open navigation"
+          >
+            <span />
+            <span />
+            <span />
+          </button>
           <div className="topbar-title">Downsell</div>
           <div className="topbar-right">
-            {/* Optional: search bar, user info */}
             <input className="topbar-search" type="text" placeholder="Search..." />
             <span className="topbar-user">👋 Hi, User</span>
           </div>
@@ -857,6 +872,8 @@ const App: React.FC = () => {
           )}
         </main>
       </div>
+      {/* Overlay for mobile sidebar */}
+      {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
     </div>
   );
 };

@@ -371,9 +371,10 @@ input[type="file"]:hover {
   align-items: center;
   padding-top: 1.5rem;
   box-shadow: 2px 0 8px rgba(0,0,0,0.07);
-  min-height: 100vh;
-  position: sticky;
+  height: 100vh;
+  position: fixed;
   top: 0;
+  left: 0;
   z-index: 101;
 }
 
@@ -390,13 +391,14 @@ input[type="file"]:hover {
   display: flex;
   align-items: center;
   gap: 1rem;
-  padding: 0.9rem 2rem;
+  padding: 0.9rem 1rem;
   color: #bfc9da;
   font-size: 1.1rem;
   cursor: pointer;
   border: none;
   background: none;
   width: 100%;
+  box-sizing: border-box;
   transition: background 0.15s, color 0.15s;
   border-left: 4px solid transparent;
 }
@@ -422,6 +424,7 @@ input[type="file"]:hover {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  margin-left: 220px;
 }
 
 .topbar {
@@ -471,4 +474,84 @@ input[type="file"]:hover {
   padding: 2.5rem 2.5rem 2.5rem 2rem;
   flex: 1;
   min-width: 0;
+}
+
+/* Hamburger button for mobile */
+.topbar-hamburger {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 32px;
+  height: 32px;
+  background: none;
+  border: none;
+  margin-right: 1.2rem;
+  cursor: pointer;
+  z-index: 200;
+}
+.topbar-hamburger span {
+  display: block;
+  width: 22px;
+  height: 3px;
+  background: #fff;
+  border-radius: 2px;
+  transition: all 0.2s;
+}
+
+/* Sidebar overlay for mobile */
+.sidebar-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.35);
+  z-index: 110;
+  display: block;
+}
+
+/* Responsive styles */
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    left: -220px;
+    top: 0;
+    height: 100vh;
+    z-index: 120;
+    transition: left 0.25s;
+  }
+  .sidebar.sidebar-open {
+    left: 0;
+    box-shadow: 2px 0 16px rgba(0,0,0,0.18);
+  }
+  .main-area {
+    margin-left: 0;
+  }
+  .topbar {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  .topbar-hamburger {
+    display: flex;
+  }
+  .sidebar-overlay {
+    display: block;
+  }
+}
+
+@media (max-width: 600px) {
+  .main-content {
+    padding: 1rem 0.5rem;
+  }
+  .topbar-title {
+    font-size: 1.1rem;
+  }
+  .topbar-search {
+    width: 100px;
+    font-size: 0.9rem;
+  }
+  .sidebar {
+    width: 170px;
+  }
+  .sidebar.sidebar-open {
+    width: 170px;
+  }
 }
