@@ -14,6 +14,8 @@ import {
   LineElement,
 } from 'chart.js';
 import './App.css';
+import { getGeminiSuggestion } from './gemini';
+import ReactMarkdown from 'react-markdown';
 
 ChartJS.register(
   CategoryScale,
@@ -91,6 +93,7 @@ function calculateSubscriptionScore({ count, standardDeviation, frequency, timeS
 
 function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date | null): string {
   if (!firstDate || !lastDate || count < 1) return 'N/A';
+  if (count === 1) return 'Once-off/yearly';
   const daysBetween = Math.max(1, Math.ceil((lastDate.getTime() - firstDate.getTime()) / (1000 * 60 * 60 * 24)) + 1);
   const freqPerYear = count / (daysBetween / 365);
   if (freqPerYear < 1) return 'Once-off/yearly';
@@ -98,7 +101,9 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
   if (freqPerYear < 16) return 'Monthly';
   if (freqPerYear < 52) return 'Weekly';
   if (freqPerYear < 156) return 'Three or more times a week';
-  return 'Daily';
+  // Only return 'Daily' if count >= 60, otherwise treat as once-off/yearly
+  if (count >= 60) return 'Daily';
+  return 'Once-off/yearly';
 }
 
 function analyzeBankStatement(data: Transaction[]): Subscription[] {
@@ -214,6 +219,18 @@ const App: React.FC = () => {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
+  const [aiSuggestions, setAiSuggestions] = useState<Record<string, { loading: boolean; error?: string; suggestion?: string }>>({});
+  const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
+  const frequencyOptions = [
+    'All',
+    'Once-off/yearly',
+    'Quarterly',
+    'Monthly',
+    'Weekly',
+    'Three or more times a week',
+    'Daily',
+  ];
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -330,6 +347,38 @@ const App: React.FC = () => {
     }, 0);
     return { avg, cumulative };
   }, [csvData]);
+
+  // Map: description -> { dates: Date[], amounts: number[] }
+  const subscriptionRawData = useMemo(() => {
+    const map: Record<string, { dates: Date[]; amounts: number[] }> = {};
+    csvData.forEach((tx) => {
+      const description = tx.Description || tx.description || '';
+      const amount = parseFloat(tx.Amount || tx.amount || '0');
+      if (amount >= 0) return;
+      const dateStr = ((tx as any)['Completed Date'] || (tx as any)['Started Date'] || tx.Date || tx.date || '').toString();
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        if (!map[description]) map[description] = { dates: [], amounts: [] };
+        map[description].dates.push(date);
+        map[description].amounts.push(amount);
+      }
+    });
+    return map;
+  }, [csvData]);
+
+  const fetchAiSuggestion = async (sub: Subscription) => {
+    setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: true } }));
+    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
+    const dateList = raw.dates.map(d => d.toISOString().slice(0, 10)).join(', ');
+    const amountList = raw.amounts.map(a => a.toFixed(2)).join(', ');
+    const prompt = `I am analyzing my bank statement. For the following recurring payment, analyze the data and suggest ways to optimize or find alternatives. Please:\n- Identify which month had the most orders.\n- Identify which day of the week is most common for orders.\n- Estimate how much could be saved by assigning a single "takeaway day" per week instead of ordering sporadically.\n- If possible, provide a simple ASCII chart or table to visualize the pattern.\n\nDetails:\n- Description: ${sub.description}\n- Frequency: ${sub.frequencyLabel}\n- Total spent: €${(-sub.total).toFixed(2)}\n- Number of payments: ${sub.count}\n- Average payment: €${(-sub.average).toFixed(2)}\n- Dates: ${dateList}\n- Amounts: ${amountList}`;
+    try {
+      const suggestion = await getGeminiSuggestion(prompt, GEMINI_API_KEY);
+      setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: false, suggestion } }));
+    } catch (e: any) {
+      setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: false, error: e.message || 'Error fetching suggestion' } }));
+    }
+  };
 
   return (
     <div className="dashboard-container">
@@ -610,46 +659,134 @@ const App: React.FC = () => {
       {csvData.length > 0 && (
         <>
           <h2 style={{ marginTop: '2rem' }}>Potential Subscriptions</h2>
+          <div style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <label htmlFor="frequency-filter" style={{ color: 'white', fontWeight: 500 }}>Filter by Frequency:</label>
+            <select
+              id="frequency-filter"
+              value={frequencyFilter}
+              onChange={e => setFrequencyFilter(e.target.value)}
+              style={{ padding: '0.5rem 1rem', borderRadius: 8, border: '1px solid #4a6cf7', fontFamily: 'Inter, sans-serif', fontWeight: 500 }}
+            >
+              {frequencyOptions.map(opt => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          </div>
           <div className="subscriptions-grid-responsive">
-            {subscriptions.map((sub) => (
-              <div className="subscription-card" key={sub.description}>
-                <h3>{sub.description}</h3>
-                <div className="subscription-details">
-                  <table className="mini-stats-table">
-                    <tbody>
-                      <tr>
-                        <td>Total Spent:</td>
-                        <td>${(-sub.total).toFixed(2)}</td>
-                      </tr>
-                      <tr>
-                        <td>Number of Payments:</td>
-                        <td>{sub.count}</td>
-                      </tr>
-                      <tr>
-                        <td>Average Payment:</td>
-                        <td>${(-sub.average).toFixed(2)}</td>
-                      </tr>
-                      <tr>
-                        <td>Maximum Payment:</td>
-                        <td>${(-sub.maxAmount).toFixed(2)}</td>
-                      </tr>
-                      <tr>
-                        <td>Frequency:</td>
-                        <td>{sub.frequencyLabel}</td>
-                      </tr>
-                      <tr>
-                        <td>Confidence Score:</td>
-                        <td>{Math.min(100, (sub.subscriptionScore * 100)).toFixed(0)}%</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                  <div className="subscription-actions">
-                    <button className="optimize-btn">Optimize</button>
-                    <button className="alt-btn">Find alternative</button>
+            {subscriptions
+              .filter(sub => frequencyFilter === 'All' || sub.frequencyLabel === frequencyFilter)
+              .map((sub) => {
+                const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
+                // Month analysis
+                const monthCounts: Record<string, number> = {};
+                raw.dates.forEach((d) => {
+                  const key = `${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}`;
+                  monthCounts[key] = (monthCounts[key] || 0) + 1;
+                });
+                const monthLabels = Object.keys(monthCounts).sort();
+                const monthValues = monthLabels.map((k) => monthCounts[k]);
+                // Day of week analysis
+                const dowCounts: number[] = Array(7).fill(0);
+                raw.dates.forEach((d) => { dowCounts[d.getDay()] += 1; });
+                const dowLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                return (
+                  <div className="subscription-card" key={sub.description}>
+                    <h3>{sub.description}</h3>
+                    <div className="subscription-details">
+                      <table className="mini-stats-table">
+                        <tbody>
+                          <tr>
+                            <td>Total Spent:</td>
+                            <td>${(-sub.total).toFixed(2)}</td>
+                          </tr>
+                          <tr>
+                            <td>Number of Payments:</td>
+                            <td>{sub.count}</td>
+                          </tr>
+                          <tr>
+                            <td>Average Payment:</td>
+                            <td>${(-sub.average).toFixed(2)}</td>
+                          </tr>
+                          <tr>
+                            <td>Maximum Payment:</td>
+                            <td>${(-sub.maxAmount).toFixed(2)}</td>
+                          </tr>
+                          <tr>
+                            <td>Frequency:</td>
+                            <td>{sub.frequencyLabel}</td>
+                          </tr>
+                          <tr>
+                            <td>Confidence Score:</td>
+                            <td>{Math.min(100, (sub.subscriptionScore * 100)).toFixed(0)}%</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                      {/* Visuals: Only show if at least 2 transactions */}
+                      {raw.dates.length >= 2 && (
+                        <div style={{ margin: '1rem 0' }}>
+                          <div style={{ marginBottom: 12 }}>
+                            <Bar
+                              data={{
+                                labels: monthLabels,
+                                datasets: [{
+                                  label: 'Payments per Month',
+                                  data: monthValues,
+                                  backgroundColor: '#4a6cf7',
+                                }],
+                              }}
+                              options={{
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false }, title: { display: true, text: 'Payments per Month', color: 'white' } },
+                                scales: { x: { ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)' } }, y: { beginAtZero: true, ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)' } } },
+                              }}
+                              height={120}
+                            />
+                          </div>
+                          <div>
+                            <Bar
+                              data={{
+                                labels: dowLabels,
+                                datasets: [{
+                                  label: 'Payments by Day of Week',
+                                  data: dowCounts,
+                                  backgroundColor: '#00d9ff',
+                                }],
+                              }}
+                              options={{
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: { legend: { display: false }, title: { display: true, text: 'Payments by Day of Week', color: 'white' } },
+                                scales: { x: { ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)' } }, y: { beginAtZero: true, ticks: { color: 'white' }, grid: { color: 'rgba(255,255,255,0.1)' } } },
+                              }}
+                              height={120}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div className="subscription-actions">
+                        <button className="optimize-btn" onClick={() => fetchAiSuggestion(sub)} disabled={aiSuggestions[sub.description]?.loading}>
+                          {aiSuggestions[sub.description]?.loading ? 'Getting suggestion...' : 'Optimize'}
+                        </button>
+                        <button className="alt-btn">Find Alternative (coming soon)</button>
+                      </div>
+                      {aiSuggestions[sub.description]?.suggestion && (
+                        <div className="ai-suggestion-box">
+                          <strong>AI Suggestion:</strong>
+                          <div style={{ marginTop: '0.5rem', whiteSpace: 'pre-line' }}>
+                            <ReactMarkdown>{aiSuggestions[sub.description]?.suggestion}</ReactMarkdown>
+                          </div>
+                        </div>
+                      )}
+                      {aiSuggestions[sub.description]?.error && (
+                        <div className="ai-suggestion-box error">
+                          <strong>Error:</strong> {aiSuggestions[sub.description]?.error}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </div>
-            ))}
+                );
+              })}
           </div>
         </>
       )}
