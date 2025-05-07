@@ -293,13 +293,6 @@ const App: React.FC = () => {
       .slice(0, 10);
   }, [subscriptions]);
 
-  const top10ByPie = useMemo(() => {
-    return subscriptions
-      .slice()
-      .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
-      .slice(0, 10);
-  }, [subscriptions]);
-
   const totalOutgoing = useMemo(() => {
     return csvData.reduce((sum, tx) => {
       const amount = parseFloat(tx.Amount || tx.amount || '0');
@@ -371,7 +364,7 @@ const App: React.FC = () => {
     const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
     const dateList = raw.dates.map(d => d.toISOString().slice(0, 10)).join(', ');
     const amountList = raw.amounts.map(a => a.toFixed(2)).join(', ');
-    const prompt = `I am analyzing my bank statement. For the following recurring payment, analyze the data and suggest ways to optimize or find alternatives. Please:\n- Identify which month had the most orders.\n- Identify which day of the week is most common for orders.\n- Estimate how much could be saved by assigning a single "takeaway day" per week instead of ordering sporadically.\n- If possible, provide a simple ASCII chart or table to visualize the pattern.\n\nDetails:\n- Description: ${sub.description}\n- Frequency: ${sub.frequencyLabel}\n- Total spent: €${(-sub.total).toFixed(2)}\n- Number of payments: ${sub.count}\n- Average payment: €${(-sub.average).toFixed(2)}\n- Dates: ${dateList}\n- Amounts: ${amountList}`;
+    const prompt = `I am analyzing my bank statement. For the following recurring payment, please:\n- Guess the category/type of expense (e.g., takeaway, groceries, medical, travel, insurance, loan, etc.) based on the name/description.\n- Give optimization or alternative suggestions that are specific to that category.\n- If relevant, analyze the data (dates and amounts) for patterns and suggest ways to save or optimize.\n- If possible, provide a simple ASCII chart or table to visualize the pattern.\n\nDetails:\n- Description: ${sub.description}\n- Frequency: ${sub.frequencyLabel}\n- Total spent: €${(-sub.total).toFixed(2)}\n- Number of payments: ${sub.count}\n- Average payment: €${(-sub.average).toFixed(2)}\n- Dates: ${dateList}\n- Amounts: ${amountList}`;
     try {
       const suggestion = await getGeminiSuggestion(prompt, GEMINI_API_KEY);
       setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: false, suggestion } }));
