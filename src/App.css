@@ -1,0 +1,107 @@
+body, #root {
+  background: #18191a;
+  color: #f3f3f3;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.logo {
+  height: 6em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2em;
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+.charts-row {
+  display: flex;
+  flex-direction: row;
+  gap: 2rem;
+  justify-content: center;
+  align-items: flex-start;
+  margin: 2rem 0 2.5rem 0;
+  flex-wrap: wrap;
+}
+
+.chart-col {
+  flex: 1 1 400px;
+  min-width: 350px;
+  max-width: 600px;
+  background: none;
+}
+
+.subscriptions-grid-responsive {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 2rem;
+  margin-top: 1rem;
+  justify-items: center;
+}
+
+.subscription-card {
+  background: #fff;
+  color: #222;
+  border-radius: 18px;
+  box-shadow: 0 4px 24px 0 rgba(44,62,80,0.08), 0 1.5px 4px 0 rgba(44,62,80,0.03);
+  border: 1px solid #e0e0e0;
+  padding: 1.5rem 1.2rem;
+  width: 100%;
+  max-width: 370px;
+  transition: box-shadow 0.2s;
+}
+.subscription-card:hover {
+  box-shadow: 0 8px 32px 0 rgba(44,62,80,0.16), 0 3px 8px 0 rgba(44,62,80,0.06);
+  border-color: #b3c6e0;
+}
+
+.mini-stats-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+}
+.mini-stats-table td {
+  padding: 0.25rem 0.5rem;
+  border: none;
+  font-size: 1rem;
+  color: #222;
+}
+.mini-stats-table td:first-child {
+  font-weight: 500;
+  color: #444;
+  text-align: left;
+  width: 60%;
+}
+.mini-stats-table td:last-child {
+  text-align: right;
+  font-family: 'Menlo', 'Consolas', monospace;
+}
