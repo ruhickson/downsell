@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
-import { Bar, Pie } from 'react-chartjs-2';
+import { Bar, Pie, Line } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -10,10 +10,22 @@ import {
   Tooltip,
   Legend,
   ArcElement,
+  PointElement,
+  LineElement,
 } from 'chart.js';
 import './App.css';
 
-ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement
+);
 
 type Transaction = {
   Description?: string;
@@ -294,6 +306,31 @@ const App: React.FC = () => {
     ],
   };
 
+  // Calculate average spend per day of month (1-31), then cumulative sum
+  const avgSpendByDay = useMemo(() => {
+    const dayTotals: number[] = Array(31).fill(0);
+    const dayCounts: number[] = Array(31).fill(0);
+    csvData.forEach((tx) => {
+      const amount = parseFloat(tx.Amount || tx.amount || '0');
+      if (amount >= 0) return;
+      const dateStr = ((tx as any)['Completed Date'] || (tx as any)['Started Date'] || tx.Date || tx.date || '').toString();
+      const date = new Date(dateStr);
+      if (!isNaN(date.getTime())) {
+        const day = date.getDate();
+        dayTotals[day - 1] += Math.abs(amount);
+        dayCounts[day - 1] += 1;
+      }
+    });
+    const avg: number[] = dayTotals.map((total, i) => (dayCounts[i] > 0 ? total / dayCounts[i] : 0));
+    // Cumulative sum
+    const cumulative: number[] = [];
+    avg.reduce((acc, val, i) => {
+      cumulative[i] = acc + val;
+      return cumulative[i];
+    }, 0);
+    return { avg, cumulative };
+  }, [csvData]);
+
   return (
     <div className="dashboard-container">
       <h1>Bank Statement Analyzer</h1>
@@ -320,8 +357,8 @@ const App: React.FC = () => {
         </div>
       </div>
       {subscriptions.length > 0 && (
-        <div className="charts-row">
-          <div className="chart-col">
+        <div className="charts-grid-2x2">
+          <div className="chart-col" style={{ height: 400 }}>
             <Bar
               data={{
                 labels: top10ByTotal.map((s) => s.description),
@@ -335,6 +372,7 @@ const App: React.FC = () => {
               }}
               options={{
                 responsive: true,
+                maintainAspectRatio: false,
                 indexAxis: 'y' as const,
                 plugins: {
                   legend: { 
@@ -352,8 +390,15 @@ const App: React.FC = () => {
                 scales: { 
                   x: { 
                     beginAtZero: true,
+                    title: {
+                      display: true,
+                      text: 'Total Spent (€)',
+                      color: 'white',
+                      font: { weight: 'bold' }
+                    },
                     ticks: {
-                      color: 'white'
+                      color: 'white',
+                      callback: (value: any) => `€${value}`
                     },
                     grid: {
                       color: 'rgba(255, 255, 255, 0.1)'
@@ -371,7 +416,7 @@ const App: React.FC = () => {
               }}
             />
           </div>
-          <div className="chart-col">
+          <div className="chart-col" style={{ height: 400 }}>
             <Bar
               data={{
                 labels: top10ByCount.map((s) => s.description),
@@ -385,6 +430,7 @@ const App: React.FC = () => {
               }}
               options={{
                 responsive: true,
+                maintainAspectRatio: false,
                 indexAxis: 'y' as const,
                 plugins: {
                   legend: { 
@@ -402,6 +448,12 @@ const App: React.FC = () => {
                 scales: { 
                   x: { 
                     beginAtZero: true,
+                    title: {
+                      display: true,
+                      text: 'Number of Payments',
+                      color: 'white',
+                      font: { weight: 'bold' }
+                    },
                     ticks: {
                       color: 'white'
                     },
@@ -421,29 +473,113 @@ const App: React.FC = () => {
               }}
             />
           </div>
-        </div>
-      )}
-      {subscriptions.length > 0 && top10ByPie.length > 0 && (
-        <div style={{ maxWidth: 600, margin: '2rem auto' }}>
-          <Pie
-            data={pieData}
-            options={{
-              plugins: {
-                title: { 
-                  display: true, 
-                  text: 'Subscriptions vs Non-Subscriptions (Total Spend)',
-                  color: 'white'
-                },
-                legend: { 
-                  display: true, 
-                  position: 'bottom',
-                  labels: {
+          <div className="chart-col" style={{ height: 400 }}>
+            <Pie
+              data={pieData}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  title: { 
+                    display: true, 
+                    text: 'Subscriptions vs Non-Subscriptions (Total Spend)',
                     color: 'white'
+                  },
+                  legend: { 
+                    display: true, 
+                    position: 'bottom',
+                    labels: {
+                      color: 'white'
+                    }
                   }
                 }
-              }
-            }}
-          />
+              }}
+            />
+          </div>
+          <div className="chart-col" style={{ height: 400 }}>
+            <Line
+              data={{
+                labels: Array.from({ length: 31 }, (_, i) => (i + 1).toString()),
+                datasets: [
+                  {
+                    label: 'Cumulative Average Spend',
+                    data: avgSpendByDay.cumulative,
+                    borderColor: '#4a6cf7',
+                    backgroundColor: 'rgba(74, 108, 247, 0.2)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    yAxisID: 'y',
+                  },
+                  {
+                    label: 'Average Spend (Non-Cumulative)',
+                    data: avgSpendByDay.avg,
+                    borderColor: '#f72585',
+                    backgroundColor: 'rgba(247, 37, 133, 0.15)',
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 2,
+                    yAxisID: 'y1',
+                  },
+                ],
+              }}
+              options={{
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                  legend: {
+                    labels: { color: 'white' }
+                  },
+                  title: {
+                    display: true,
+                    text: 'Cumulative & Daily Average Spend by Day of Month',
+                    color: 'white',
+                  },
+                },
+                scales: {
+                  x: {
+                    title: {
+                      display: true,
+                      text: 'Day of Month',
+                      color: 'white',
+                      font: { weight: 'bold' }
+                    },
+                    ticks: { color: 'white' },
+                    grid: { color: 'rgba(255,255,255,0.1)' }
+                  },
+                  y: {
+                    title: {
+                      display: true,
+                      text: 'Cumulative Average Spend (€)',
+                      color: 'white',
+                      font: { weight: 'bold' }
+                    },
+                    ticks: {
+                      color: 'white',
+                      callback: (value: any) => `€${value}`
+                    },
+                    grid: { color: 'rgba(255,255,255,0.1)' }
+                  },
+                  y1: {
+                    position: 'right',
+                    title: {
+                      display: true,
+                      text: 'Average Spend (€)',
+                      color: 'white',
+                      font: { weight: 'bold' }
+                    },
+                    ticks: {
+                      color: 'white',
+                      callback: (value: any) => `€${value}`
+                    },
+                    grid: {
+                      drawOnChartArea: false
+                    }
+                  }
+                }
+              }}
+            />
+          </div>
         </div>
       )}
       {csvData.length > 0 && (

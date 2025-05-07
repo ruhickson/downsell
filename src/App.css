@@ -78,6 +78,7 @@ input[type="file"]:hover {
   border-radius: 12px;
   padding: 2rem 2rem 1.5rem 2rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin: 0;
 }
 
 .subscriptions-grid-responsive {
@@ -186,6 +187,8 @@ input[type="file"]:hover {
 }
 
 .upload-area {
+  width: 100%;
+  box-sizing: border-box;
   background: var(--brand-light);
   border: 2px dashed var(--brand-primary);
   border-radius: 12px;
@@ -222,4 +225,26 @@ input[type="file"]:hover {
 
 .upload-link:hover {
   color: var(--brand-accent);
+}
+
+.charts-grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 2rem;
+  margin: 2rem 0 0 0;
+}
+
+.chart-placeholder {
+  background: none;
+  box-shadow: none;
+  margin: 0;
+}
+
+@media (max-width: 1200px) {
+  .charts-grid-2x2 {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    gap: 1.5rem;
+  }
 }
