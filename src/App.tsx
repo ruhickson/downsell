@@ -99,7 +99,10 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
   if (freqPerYear < 1) return 'Once-off/yearly';
   if (freqPerYear < 4) return 'Quarterly';
   if (freqPerYear < 16) return 'Monthly';
-  if (freqPerYear < 52) return 'Weekly';
+  if (freqPerYear < 52) {
+    if (count < 10) return 'Irregular';
+    return 'Weekly';
+  }
   if (freqPerYear < 156) return 'Three or more times a week';
   // Only return 'Daily' if count >= 60, otherwise treat as once-off/yearly
   if (count >= 60) return 'Daily';
@@ -227,6 +230,7 @@ const App: React.FC = () => {
   const frequencyOptions = [
     'All',
     'Once-off/yearly',
+    'Irregular',
     'Quarterly',
     'Monthly',
     'Weekly',
@@ -366,7 +370,22 @@ const App: React.FC = () => {
     const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
     const dateList = raw.dates.map(d => d.toISOString().slice(0, 10)).join(', ');
     const amountList = raw.amounts.map(a => a.toFixed(2)).join(', ');
-    const prompt = `I am analyzing my bank statement. For the following recurring payment, please:\n- Guess the category/type of expense (e.g., takeaway, groceries, medical, travel, insurance, loan, etc.) based on the name/description.\n- Give optimization or alternative suggestions that are specific to that category.\n- If relevant, analyze the data (dates and amounts) for patterns and suggest ways to save or optimize.\n- If possible, provide a simple ASCII chart or table to visualize the pattern.\n\nDetails:\n- Description: ${sub.description}\n- Frequency: ${sub.frequencyLabel}\n- Total spent: €${(-sub.total).toFixed(2)}\n- Number of payments: ${sub.count}\n- Average payment: €${(-sub.average).toFixed(2)}\n- Dates: ${dateList}\n- Amounts: ${amountList}`;
+    const prompt = `I am analyzing my bank statement in Dublin, Ireland. For the following recurring payment, please:
+    - Check if the name matches a well-known chain or franchise in Dublin/Ireland, and mention this if so. Use up-to-date web knowledge to check for this.
+    - Guess the category/type of expense (e.g., takeaway, groceries, medical, travel, insurance, loan, etc.) based on the name/description.
+    - If the name could be a local business, assume it is in Dublin and consider what type of business it is (e.g., search 'Foodgame Dublin').
+    - Give optimization or alternative suggestions that are specific to that category.
+    - If relevant, analyze the data (dates and amounts) for patterns and suggest ways to save or optimize.
+    - If possible, provide a simple ASCII chart or table to visualize the pattern.
+
+    Details:
+    - Description: ${sub.description}
+    - Frequency: ${sub.frequencyLabel}
+    - Total spent: €${(-sub.total).toFixed(2)}
+    - Number of payments: ${sub.count}
+    - Average payment: €${(-sub.average).toFixed(2)}
+    - Dates: ${dateList}
+    - Amounts: ${amountList}`;
     try {
       const suggestion = await getGeminiSuggestion(prompt, GEMINI_API_KEY);
       setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: false, suggestion } }));
@@ -692,7 +711,7 @@ const App: React.FC = () => {
                         <tbody>
                           <tr>
                             <td>Total Spent:</td>
-                            <td>${(-sub.total).toFixed(2)}</td>
+                            <td>€{(-sub.total).toFixed(2)}</td>
                           </tr>
                           <tr>
                             <td>Number of Payments:</td>
@@ -700,7 +719,7 @@ const App: React.FC = () => {
                           </tr>
                           <tr>
                             <td>Average Payment:</td>
-                            <td>${(-sub.average).toFixed(2)}</td>
+                            <td>€{(-sub.average).toFixed(2)}</td>
                           </tr>
                           <tr>
                             <td>Maximum Payment:</td>
