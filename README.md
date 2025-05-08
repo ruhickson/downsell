@@ -1,4 +1,44 @@
-# React + TypeScript + Vite
+# AI-Assisted Bank Statement Analyzer
+
+This project is an **AI-assisted tool** that analyzes your yearly bank statement (CSV) and offers actionable suggestions, optimization actions, and techniques to help you improve your finances immediately.
+
+## Project Overview
+
+Upload your bank statement CSV and let the dashboard:
+- Detect and group recurring payments (subscriptions)
+- Visualize your spending patterns
+- Suggest ways to optimize or reduce recurring expenses
+- Provide actionable insights for better financial health
+
+## Key Features
+- **Automatic Subscription Detection:** Identifies recurring outgoing payments, ignoring transfers and exchanges.
+- **Modern Dashboard UI:** Wide, responsive grid of cards for each detected subscription, with clear statistics and actionable buttons.
+- **Spending Visualizations:** Bar and pie charts for top subscriptions by spend and count, and overall subscription vs non-subscription spend.
+- **Frequency Analysis:** Labels subscriptions as Monthly, Weekly, etc., based on payment patterns.
+- **Actionable Suggestions:** Each subscription card offers "Optimize" and "Find alternative" actions.
+- **Summary Stats:** See total transactions, total spent, and potential savings at a glance.
+- **Robust Error Handling:** Defensive coding ensures smooth experience even with imperfect CSVs.
+
+## Usage
+1. **Install dependencies:**
+   ```bash
+   npm install
+   ```
+2. **Start the development server:**
+   ```bash
+   npm run dev
+   ```
+3. **Upload your bank statement CSV** via the dashboard UI.
+4. **Explore insights:** Review detected subscriptions, charts, and actionable suggestions.
+
+## Technologies Used
+- **React + TypeScript** (with Vite)
+- **Chart.js** and **react-chartjs-2** for data visualization
+- **PapaParse** for CSV parsing
+
+---
+
+## Vite + React + TypeScript Template Info
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
