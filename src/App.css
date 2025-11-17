@@ -218,7 +218,7 @@ input[type="file"]:hover {
 
 .upload-prompt {
   color: var(--brand-dark);
-  font-size: 1.1rem;
+  font-size: 2.2rem;
   font-weight: 500;
 }
 
@@ -376,6 +376,7 @@ input[type="file"]:hover {
   top: 0;
   left: 0;
   z-index: 101;
+  justify-content: flex-start;
 }
 
 .sidebar-logo {
@@ -409,6 +410,19 @@ input[type="file"]:hover {
   color: #fff;
   border-left: 4px solid #2d8cff;
   font-weight: 600;
+}
+
+.sidebar-item-disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  color: #6a7c94;
+}
+
+.sidebar-item-disabled:hover {
+  background: none;
+  color: #6a7c94;
+  border-left: 4px solid transparent;
+  font-weight: 400;
 }
 
 .sidebar-icon {
