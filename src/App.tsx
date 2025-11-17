@@ -263,9 +263,7 @@ const App: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
-  const [aiSuggestions, setAiSuggestions] = useState<Record<string, { loading: boolean; error?: string; suggestion?: string }>>({});
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
-  const [actionUrls, setActionUrls] = useState<Record<string, { switchUrl?: string; cancelUrl?: string; switchLoading?: boolean; cancelLoading?: boolean; switchError?: string; cancelError?: string }>>({});
   const frequencyOptions = [
     'All',
     'Once-off/yearly',
@@ -533,115 +531,6 @@ const App: React.FC = () => {
       subscriptionSpend: cumulativeSubscriptionSpend,
     };
   }, [csvData, subscriptions, subscriptionRawData]);
-
-  const fetchAiSuggestion = async (sub: Subscription) => {
-    setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: true } }));
-    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
-    const dateList = raw.dates.map(d => d.toISOString().slice(0, 10)).join(', ');
-    const amountList = raw.amounts.map(a => a.toFixed(2)).join(', ');
-    const prompt = `I am analyzing my bank statement in Dublin, Ireland. For the following recurring payment, please:
-    - Check if the name matches a well-known chain or franchise in Dublin/Ireland, and mention this if so. Use up-to-date web knowledge to check for this.
-    - Guess the category/type of expense (e.g., takeaway, groceries, medical, travel, insurance, loan, etc.) based on the name/description.
-    - If the name could be a local business, assume it is in Dublin and consider what type of business it is (e.g., search 'Foodgame Dublin').
-    - Give optimization or alternative suggestions that are specific to that category.
-    - If relevant, analyze the data (dates and amounts) for patterns and suggest ways to save or optimize.
-    - If possible, provide a simple ASCII chart or table to visualize the pattern.
-
-    Details:
-    - Description: ${sub.description}
-    - Frequency: ${sub.frequencyLabel}
-    - Total spent: €${(-sub.total).toFixed(2)}
-    - Number of payments: ${sub.count}
-    - Average payment: €${(-sub.average).toFixed(2)}
-    - Dates: ${dateList}
-    - Amounts: ${amountList}`;
-    try {
-      const suggestion = await getGeminiSuggestion(prompt, GEMINI_API_KEY);
-      setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: false, suggestion } }));
-    } catch (e: any) {
-      setAiSuggestions((prev) => ({ ...prev, [sub.description]: { loading: false, error: e.message || 'Error fetching suggestion' } }));
-    }
-  };
-
-  // Placeholder: increment savingsRecommended when an AI suggestion is shown (simulate €5 per suggestion)
-  const handleShowAiSuggestion = async (sub: Subscription) => {
-    fetchAiSuggestion(sub);
-    incrementStat('savings_recommended', 5); // Simulate €5 savings per suggestion
-  };
-
-  // Fetch URL for switching subscription using AI
-  const fetchSwitchUrl = async (sub: Subscription) => {
-    setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], switchLoading: true, switchError: undefined } }));
-    
-    const prompt = `Find a URL to switch or find alternative packages for the subscription service "${sub.description}". 
-    The user pays €${(-sub.average).toFixed(2)} ${sub.frequencyLabel.toLowerCase()}.
-    Return ONLY a valid URL (starting with http:// or https://) where the user can:
-    1. Switch to a different plan/package
-    2. Find alternative pricing options
-    3. View available subscription tiers
-    
-    If you cannot find a specific URL, return "NOT_FOUND". Do not include any explanation, just the URL or "NOT_FOUND".`;
-    
-    try {
-      const response = await getGeminiSuggestion(prompt, GEMINI_API_KEY, 128);
-      // Extract URL from response (might have extra text)
-      const urlMatch = response.match(/https?:\/\/[^\s]+/);
-      const url = urlMatch ? urlMatch[0].trim() : response.trim();
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], switchUrl: url, switchLoading: false } }));
-      } else {
-        setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], switchLoading: false, switchError: 'URL not found' } }));
-      }
-    } catch (e: any) {
-      let errorMessage = 'Error fetching URL';
-      if (e.message?.includes('403') || e.message?.includes('PERMISSION_DENIED') || e.message?.includes('API_KEY_HTTP_REFERRER_BLOCKED')) {
-        errorMessage = 'API key configuration issue. Please add localhost to allowed referrers in Google Cloud Console.';
-      } else if (e.message) {
-        errorMessage = e.message;
-      }
-      setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], switchLoading: false, switchError: errorMessage } }));
-    }
-  };
-
-  // Fetch URL for cancelling subscription using AI
-  const fetchCancelUrl = async (sub: Subscription) => {
-    setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], cancelLoading: true, cancelError: undefined } }));
-    
-    const prompt = `Find a URL to cancel the subscription service "${sub.description}". 
-    The user pays €${(-sub.average).toFixed(2)} ${sub.frequencyLabel.toLowerCase()}.
-    Return ONLY a valid URL (starting with http:// or https://) where the user can:
-    1. Cancel their subscription
-    2. Manage their account to cancel
-    3. Access cancellation settings
-    
-    Common patterns:
-    - [service].com/account/cancel
-    - [service].com/settings/subscription
-    - [service].com/manage/cancel
-    - [service].com/billing/cancel
-    
-    If you cannot find a specific URL, return "NOT_FOUND". Do not include any explanation, just the URL or "NOT_FOUND".`;
-    
-    try {
-      const response = await getGeminiSuggestion(prompt, GEMINI_API_KEY, 128);
-      // Extract URL from response (might have extra text)
-      const urlMatch = response.match(/https?:\/\/[^\s]+/);
-      const url = urlMatch ? urlMatch[0].trim() : response.trim();
-      if (url.startsWith('http://') || url.startsWith('https://')) {
-        setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], cancelUrl: url, cancelLoading: false } }));
-      } else {
-        setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], cancelLoading: false, cancelError: 'URL not found' } }));
-      }
-    } catch (e: any) {
-      let errorMessage = 'Error fetching URL';
-      if (e.message?.includes('403') || e.message?.includes('PERMISSION_DENIED') || e.message?.includes('API_KEY_HTTP_REFERRER_BLOCKED')) {
-        errorMessage = 'API key configuration issue. Please add localhost to allowed referrers in Google Cloud Console.';
-      } else if (e.message) {
-        errorMessage = e.message;
-      }
-      setActionUrls((prev) => ({ ...prev, [sub.description]: { ...prev[sub.description], cancelLoading: false, cancelError: errorMessage } }));
-    }
-  };
 
   // Generate PDF report matching the Report tab
   const handleDownloadReport = async () => {
@@ -1430,19 +1319,6 @@ const App: React.FC = () => {
                                   </button>
                                   <button className="alt-btn">Find Alternative (coming soon)</button>
                                 </div>
-                                {aiSuggestions[sub.description]?.suggestion && (
-                                  <div className="ai-suggestion-box">
-                                    <strong>AI Suggestion:</strong>
-                                    <div style={{ marginTop: '0.5rem', whiteSpace: 'pre-line' }}>
-                                      <ReactMarkdown>{aiSuggestions[sub.description]?.suggestion}</ReactMarkdown>
-                                    </div>
-                                  </div>
-                                )}
-                                {aiSuggestions[sub.description]?.error && (
-                                  <div className="ai-suggestion-box error">
-                                    <strong>Error:</strong> {aiSuggestions[sub.description]?.error}
-                                  </div>
-                                )}
                               </div>
                             </div>
                           );
