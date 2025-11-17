@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# Note: The Gemini API key (VITE_GEMINI_API_KEY) is intentionally exposed to client-side code
+# as it's used in the browser. To prevent Netlify secrets scanning from flagging it,
+# set SECRETS_SCAN_SMART_DETECTION_ENABLED = "false" in Netlify's environment variables
+# (Site settings → Environment variables)
+
