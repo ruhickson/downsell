@@ -1505,7 +1505,7 @@ const App: React.FC = () => {
                                   <td style={{ padding: '1rem', textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
                                       <a 
-                                        href={`https://www.google.com/search?q=${encodeURIComponent(sub.description + ' alternatives')}`}
+                                        href={`https://duckduckgo.com/?q=${encodeURIComponent(sub.description + ' alternatives')}`}
                                         target="_blank" 
                                         rel="noopener noreferrer"
                                         className="optimize-btn"
@@ -1514,7 +1514,7 @@ const App: React.FC = () => {
                                         Switch
                                       </a>
                                       <a 
-                                        href={`https://www.google.com/search?q=${encodeURIComponent('Cancel ' + sub.description)}`}
+                                        href={`https://duckduckgo.com/?q=${encodeURIComponent('Cancel ' + sub.description)}`}
                                         target="_blank" 
                                         rel="noopener noreferrer"
                                         className="alt-btn"
