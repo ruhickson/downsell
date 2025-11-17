@@ -17,9 +17,6 @@ import {
 import './App.css';
 import { getGeminiSuggestion } from './gemini';
 import ReactMarkdown from 'react-markdown';
-import { GoogleOAuthProvider } from '@react-oauth/google';
-import { GoogleLogin, googleLogout } from '@react-oauth/google';
-import { jwtDecode } from 'jwt-decode';
 import jsPDF from 'jspdf';
 
 ChartJS.register(
@@ -280,8 +277,6 @@ const App: React.FC = () => {
     'Daily',
   ];
 
-  // --- About page statistics ---
-  const [stats, setStats] = useState<Record<string, number>>(() => fetchStats());
 
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
@@ -300,7 +295,6 @@ const App: React.FC = () => {
         setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
         incrementStat('files_uploaded');
         incrementStat('rows_analyzed', (results.data as Transaction[]).length);
-        setStats(fetchStats());
       },
     });
   };
@@ -329,7 +323,6 @@ const App: React.FC = () => {
           setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
           incrementStat('files_uploaded');
           incrementStat('rows_analyzed', (results.data as Transaction[]).length);
-          setStats(fetchStats());
         },
       });
     }
@@ -550,7 +543,6 @@ const App: React.FC = () => {
   const handleShowAiSuggestion = async (sub: Subscription) => {
     fetchAiSuggestion(sub);
     incrementStat('savings_recommended', 5); // Simulate €5 savings per suggestion
-    refreshStats();
   };
 
   // Fetch URL for switching subscription using AI
@@ -630,7 +622,6 @@ const App: React.FC = () => {
   // Generate PDF report matching the Report tab
   const handleDownloadReport = async () => {
     incrementStat('reports_downloaded');
-    refreshStats();
     
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     let y = 40;
@@ -874,24 +865,14 @@ const App: React.FC = () => {
     doc.save('downsell_report.pdf');
   };
 
-  const [user, setUser] = useState<any>(() => {
-    const stored = localStorage.getItem('downsell_user');
-    return stored ? JSON.parse(stored) : null;
-  });
 
   // On mount, increment visits
   React.useEffect(() => {
     incrementStat('visits');
-    setStats(fetchStats());
   }, []);
 
-  const refreshStats = () => {
-    setStats(fetchStats());
-  };
-
   return (
-    <GoogleOAuthProvider clientId="456095468781-fcpgaireqemia7tll1oujqmet5m7m94v.apps.googleusercontent.com">
-      <div className="app-layout">
+    <div className="app-layout">
         {/* Sidebar */}
         <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
           <div className="sidebar-logo">
@@ -1804,7 +1785,6 @@ const App: React.FC = () => {
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       </div>
-    </GoogleOAuthProvider>
   );
 };
 
