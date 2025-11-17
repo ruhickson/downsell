@@ -15,8 +15,7 @@ import {
   Filler,
 } from 'chart.js';
 import './App.css';
-import { getGeminiSuggestion, listModels } from './gemini';
-import ReactMarkdown from 'react-markdown';
+import { listModels } from './gemini';
 import jsPDF from 'jspdf';
 
 ChartJS.register(
