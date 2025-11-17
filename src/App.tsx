@@ -787,7 +787,7 @@ const App: React.FC = () => {
     <div className="app-layout">
         {/* Sidebar */}
         <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
-          <div className="sidebar-logo">
+          <div className="sidebar-logo" onClick={() => window.location.reload()} style={{ cursor: 'pointer' }}>
             <img src="/header.png" alt="Broc" style={{ height: '40px', width: 'auto' }} />
           </div>
           <nav className="sidebar-nav">
