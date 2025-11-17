@@ -14,7 +14,7 @@ export async function listModels(apiKey: string): Promise<any> {
 }
 
 export async function getGeminiSuggestion(prompt: string, apiKey: string, maxTokens: number = 256): Promise<string> {
-  const url = 'https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key=' + apiKey;
+  const url = 'https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=' + apiKey;
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: {
