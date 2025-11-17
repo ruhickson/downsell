@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Papa from 'papaparse';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import {
@@ -15,7 +15,7 @@ import {
   Filler,
 } from 'chart.js';
 import './App.css';
-import { getGeminiSuggestion } from './gemini';
+import { getGeminiSuggestion, listModels } from './gemini';
 import ReactMarkdown from 'react-markdown';
 import jsPDF from 'jspdf';
 
@@ -277,6 +277,30 @@ const App: React.FC = () => {
     'Daily',
   ];
 
+  // Call ListModels on mount to see available models
+  useEffect(() => {
+    if (GEMINI_API_KEY) {
+      listModels(GEMINI_API_KEY)
+        .then((data) => {
+          console.log('Available Gemini models:', data);
+          if (data.models) {
+            const generateContentModels = data.models
+              .filter((model: any) => 
+                model.supportedGenerationMethods?.includes('generateContent')
+              )
+              .map((model: any) => ({
+                name: model.name,
+                displayName: model.displayName,
+                supportedMethods: model.supportedGenerationMethods
+              }));
+            console.log('Models supporting generateContent:', generateContentModels);
+          }
+        })
+        .catch((error) => {
+          console.error('Error listing models:', error);
+        });
+    }
+  }, [GEMINI_API_KEY]);
 
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
