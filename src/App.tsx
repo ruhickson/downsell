@@ -1425,8 +1425,8 @@ const App: React.FC = () => {
                                   </div>
                                 )}
                                 <div className="subscription-actions">
-                                  <button className="optimize-btn" onClick={() => handleShowAiSuggestion(sub)} disabled={aiSuggestions[sub.description]?.loading}>
-                                    {aiSuggestions[sub.description]?.loading ? 'Getting suggestion...' : 'Optimize'}
+                                  <button className="optimize-btn" disabled>
+                                    Optimise (soon)
                                   </button>
                                   <button className="alt-btn">Find Alternative (coming soon)</button>
                                 </div>
@@ -1622,8 +1622,6 @@ const App: React.FC = () => {
                                   : sub.frequencyLabel === 'Daily'
                                     ? -sub.average * 30
                                     : -sub.average;
-                              const urls = actionUrls[sub.description] || {};
-                              
                               return (
                                 <tr key={sub.description} style={{ borderBottom: index < highConfidenceSubscriptions.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
                                   <td style={{ padding: '1rem', color: 'white' }}>{sub.description}</td>
@@ -1631,52 +1629,25 @@ const App: React.FC = () => {
                                   <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{monthlySpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td style={{ padding: '1rem', textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-                                      {urls.switchUrl ? (
-                                        <a 
-                                          href={urls.switchUrl} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer"
-                                          className="optimize-btn"
-                                          style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block' }}
-                                        >
-                                          Switch
-                                        </a>
-                                      ) : (
-                                        <button 
-                                          className="optimize-btn" 
-                                          onClick={() => fetchSwitchUrl(sub)}
-                                          disabled={urls.switchLoading}
-                                          style={{ padding: '0.5rem 1rem' }}
-                                        >
-                                          {urls.switchLoading ? 'Finding...' : 'Switch'}
-                                        </button>
-                                      )}
-                                      {urls.cancelUrl ? (
-                                        <a 
-                                          href={urls.cancelUrl} 
-                                          target="_blank" 
-                                          rel="noopener noreferrer"
-                                          className="alt-btn"
-                                          style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block', background: 'rgba(247, 37, 133, 0.2)', color: '#f72585', border: '1px solid #f72585' }}
-                                        >
-                                          Cancel
-                                        </a>
-                                      ) : (
-                                        <button 
-                                          className="alt-btn" 
-                                          onClick={() => fetchCancelUrl(sub)}
-                                          disabled={urls.cancelLoading}
-                                          style={{ padding: '0.5rem 1rem', background: 'rgba(247, 37, 133, 0.2)', color: '#f72585', border: '1px solid #f72585' }}
-                                        >
-                                          {urls.cancelLoading ? 'Finding...' : 'Cancel'}
-                                        </button>
-                                      )}
+                                      <a 
+                                        href={`https://www.google.com/search?q=${encodeURIComponent(sub.description + ' alternatives')}`}
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="optimize-btn"
+                                        style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block' }}
+                                      >
+                                        Switch
+                                      </a>
+                                      <a 
+                                        href={`https://www.google.com/search?q=${encodeURIComponent('Cancel ' + sub.description)}`}
+                                        target="_blank" 
+                                        rel="noopener noreferrer"
+                                        className="alt-btn"
+                                        style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block', background: 'rgba(247, 37, 133, 0.2)', color: '#f72585', border: '1px solid #f72585' }}
+                                      >
+                                        Cancel
+                                      </a>
                                     </div>
-                                    {(urls.switchError || urls.cancelError) && (
-                                      <div style={{ fontSize: '0.8rem', color: '#f72585', marginTop: '0.5rem' }}>
-                                        {urls.switchError || urls.cancelError}
-                                      </div>
-                                    )}
                                   </td>
                                 </tr>
                               );
