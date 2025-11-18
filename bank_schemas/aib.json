@@ -1,0 +1,104 @@
+{
+  "bank": "AIB",
+  "file_pattern": "Transaction_Export_*.csv",
+  "columns": [
+    {
+      "name": "Posted Account",
+      "type": "string",
+      "description": "Account number in format 'XXXXXX - XXXXXXXX'",
+      "required": true,
+      "examples": ["933600 - 28253181"]
+    },
+    {
+      "name": "Posted Transactions Date",
+      "type": "date",
+      "format": "DD/MM/YYYY",
+      "description": "Date when transaction was posted",
+      "required": true,
+      "examples": ["01/10/2024", "07/10/2024"]
+    },
+    {
+      "name": "Description1",
+      "type": "string",
+      "description": "Primary transaction description/merchant name",
+      "required": true,
+      "examples": ["VDP-IRISHWRITERSCE", "VDP-DELIVEROO", "D/D HAVEN MORTGAGE"]
+    },
+    {
+      "name": "Description2",
+      "type": "string",
+      "description": "Secondary transaction description (often empty or contains reference numbers)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "IE24100446740443"]
+    },
+    {
+      "name": "Description3",
+      "type": "string",
+      "description": "Tertiary transaction description (often empty)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": [""]
+    },
+    {
+      "name": "Debit Amount",
+      "type": "decimal",
+      "description": "Debit amount (outgoing). May contain commas for thousands separator. Empty for credit transactions.",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["50.00", "1,278.11", ""]
+    },
+    {
+      "name": "Credit Amount",
+      "type": "decimal",
+      "description": "Credit amount (incoming). May contain commas for thousands separator. Empty for debit transactions.",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "776.11"]
+    },
+    {
+      "name": "Balance",
+      "type": "decimal",
+      "description": "Account balance after transaction (can be negative)",
+      "required": true,
+      "examples": ["1351.98", "-35.23", "611.28"]
+    },
+    {
+      "name": "Posted Currency",
+      "type": "string",
+      "description": "Currency code",
+      "required": true,
+      "examples": ["EUR"]
+    },
+    {
+      "name": "Transaction Type",
+      "type": "string",
+      "description": "Type of transaction",
+      "required": true,
+      "examples": ["Debit", "Credit", "Direct Debit"]
+    },
+    {
+      "name": "Local Currency Amount",
+      "type": "decimal",
+      "description": "Amount in local currency (may have leading space)",
+      "required": true,
+      "examples": [" 50.00", " 1,278.11"]
+    },
+    {
+      "name": "Local Currency",
+      "type": "string",
+      "description": "Local currency code",
+      "required": true,
+      "examples": ["EUR"]
+    }
+  ],
+  "notes": [
+    "Debit Amount and Credit Amount are mutually exclusive - one will be empty",
+    "Amounts may contain comma separators for thousands (e.g., '1,278.11')",
+    "Local Currency Amount may have leading spaces",
+    "Description fields are concatenated to form full transaction description",
+    "Date format is DD/MM/YYYY (European format)",
+    "Balance can be negative"
+  ]
+}
+

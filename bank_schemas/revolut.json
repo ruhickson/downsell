@@ -1,0 +1,85 @@
+{
+  "bank": "Revolut",
+  "file_pattern": "account-statement_*.csv",
+  "columns": [
+    {
+      "name": "Type",
+      "type": "string",
+      "description": "Transaction type (e.g., EXCHANGE, CARD_PAYMENT, TRANSFER)",
+      "required": true,
+      "examples": ["EXCHANGE", "CARD_PAYMENT", "TRANSFER"]
+    },
+    {
+      "name": "Product",
+      "type": "string",
+      "description": "Account product type",
+      "required": true,
+      "examples": ["Current"]
+    },
+    {
+      "name": "Started Date",
+      "type": "datetime",
+      "format": "YYYY-MM-DD HH:MM:SS",
+      "description": "When the transaction was initiated",
+      "required": true,
+      "examples": ["2024-04-01 03:07:52"]
+    },
+    {
+      "name": "Completed Date",
+      "type": "datetime",
+      "format": "YYYY-MM-DD HH:MM:SS",
+      "description": "When the transaction was completed",
+      "required": true,
+      "examples": ["2024-04-01 03:07:52"]
+    },
+    {
+      "name": "Description",
+      "type": "string",
+      "description": "Transaction description/merchant name",
+      "required": true,
+      "examples": ["Tesco", "Exchange to X:8:SEI", "Patreon"]
+    },
+    {
+      "name": "Amount",
+      "type": "decimal",
+      "description": "Transaction amount (negative for debits, positive for credits)",
+      "required": true,
+      "examples": ["-11.22", "-5.60", "100.00"]
+    },
+    {
+      "name": "Fee",
+      "type": "decimal",
+      "description": "Transaction fee",
+      "required": true,
+      "examples": ["0.00"]
+    },
+    {
+      "name": "Currency",
+      "type": "string",
+      "description": "Currency code",
+      "required": true,
+      "examples": ["EUR"]
+    },
+    {
+      "name": "State",
+      "type": "string",
+      "description": "Transaction state",
+      "required": true,
+      "examples": ["COMPLETED"]
+    },
+    {
+      "name": "Balance",
+      "type": "decimal",
+      "description": "Account balance after transaction",
+      "required": true,
+      "examples": ["1518.11", "1506.89"]
+    }
+  ],
+  "notes": [
+    "Amount is negative for outgoing transactions (debits)",
+    "Amount is positive for incoming transactions (credits)",
+    "Dates are in ISO format with time component",
+    "Description field contains merchant names or transaction details"
+  ]
+}
+
