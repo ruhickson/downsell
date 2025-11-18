@@ -198,8 +198,23 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
              transaction.date || '';
     }
     if (date) {
-      const transactionDate = new Date(date);
-      transactionsByDescription[description].dates.push(transactionDate);
+      // Parse date based on format
+      let transactionDate: Date;
+      try {
+        if (isAIB && date.includes('/')) {
+          // AIB format: DD/MM/YYYY
+          const [day, month, year] = date.split('/');
+          transactionDate = new Date(`${year}-${month}-${day}`);
+        } else if (date.includes('-') && date.includes(' ')) {
+          // Revolut format: YYYY-MM-DD HH:MM:SS
+          transactionDate = new Date(date);
+        } else {
+          transactionDate = new Date(date);
+        }
+        
+        // Only add if date is valid
+        if (!isNaN(transactionDate.getTime())) {
+          transactionsByDescription[description].dates.push(transactionDate);
       if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
         transactionsByDescription[description].firstDate = transactionDate;
       }
