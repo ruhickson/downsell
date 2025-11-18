@@ -1,0 +1,69 @@
+{
+  "field_mappings": {
+    "date": {
+      "revolut": "Completed Date",
+      "aib": "Posted Transactions Date",
+      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB uses date format (DD/MM/YYYY). Use Completed Date for Revolut, Posted Transactions Date for AIB."
+    },
+    "description": {
+      "revolut": "Description",
+      "aib": ["Description1", "Description2", "Description3"],
+      "notes": "For AIB, concatenate Description1 + Description2 + Description3 (with spaces) to get full description. Description2 and Description3 may be empty."
+    },
+    "amount": {
+      "revolut": "Amount",
+      "aib": ["Debit Amount", "Credit Amount"],
+      "notes": "Revolut uses single Amount field (negative for debits, positive for credits). AIB uses separate Debit Amount and Credit Amount fields (one will be empty). For AIB: if Debit Amount exists, use negative value; if Credit Amount exists, use positive value. Remove commas from AIB amounts."
+    },
+    "currency": {
+      "revolut": "Currency",
+      "aib": "Posted Currency",
+      "notes": "Both use currency codes like 'EUR'. AIB also has 'Local Currency' field which is typically the same."
+    },
+    "balance": {
+      "revolut": "Balance",
+      "aib": "Balance",
+      "notes": "Both represent account balance after transaction. May be negative."
+    },
+    "transaction_type": {
+      "revolut": "Type",
+      "aib": "Transaction Type",
+      "notes": "Revolut uses values like 'CARD_PAYMENT', 'EXCHANGE', 'TRANSFER'. AIB uses values like 'Debit', 'Credit', 'Direct Debit'."
+    }
+  },
+  "detection_rules": {
+    "revolut": {
+      "required_columns": ["Type", "Product", "Started Date", "Completed Date", "Description", "Amount", "Fee", "Currency", "State", "Balance"],
+      "unique_identifiers": [
+        "Type",
+        "Started Date",
+        "Completed Date"
+      ],
+      "file_pattern": "account-statement_*.csv"
+    },
+    "aib": {
+      "required_columns": ["Posted Account", "Posted Transactions Date", "Description1", "Description2", "Description3", "Debit Amount", "Credit Amount", "Balance", "Posted Currency", "Transaction Type", "Local Currency Amount", "Local Currency"],
+      "unique_identifiers": [
+        "Posted Account",
+        "Posted Transactions Date",
+        "Description1"
+      ],
+      "file_pattern": "Transaction_Export_*.csv"
+    }
+  },
+  "processing_notes": {
+    "revolut": {
+      "date_parsing": "Parse as ISO datetime: YYYY-MM-DD HH:MM:SS. Extract date portion if only date needed.",
+      "amount_parsing": "Amount is already signed (negative for debits, positive for credits). Use as-is.",
+      "description_parsing": "Use Description field directly.",
+      "filtering": "Filter out transactions where Type is 'EXCHANGE' or 'TRANSFER' for subscription analysis."
+    },
+    "aib": {
+      "date_parsing": "Parse as DD/MM/YYYY format. Convert to standard date format.",
+      "amount_parsing": "If Debit Amount exists and is not empty, use negative value (remove commas first). If Credit Amount exists and is not empty, use positive value (remove commas first). One will always be empty.",
+      "description_parsing": "Concatenate Description1 + (space if Description2 exists) + Description2 + (space if Description3 exists) + Description3. Trim result.",
+      "filtering": "Filter out transactions where Transaction Type indicates transfers or exchanges if needed."
+    }
+  }
+}
+
