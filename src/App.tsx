@@ -113,10 +113,61 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
 function analyzeBankStatement(data: Transaction[]): Subscription[] {
   const transactionsByDescription: Record<string, any> = {};
   data.forEach((transaction) => {
-    const description = transaction.Description || transaction.description || '';
-    const type = (transaction.Type || transaction.type || '').toUpperCase();
-    const amount = parseFloat(transaction.Amount || transaction.amount || '0');
-    if (amount > 0) return;
+    // Detect bank format
+    const keys = Object.keys(transaction);
+    const isAIB = keys.some(k => 
+      k.includes('Posted Account') || 
+      k.includes('Posted Transactions Date') || 
+      k.includes('Description1')
+    );
+    
+    // Extract description
+    let description = '';
+    if (isAIB) {
+      // AIB: concatenate Description1, Description2, Description3
+      const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
+      const desc2Key = keys.find(k => k.trim() === 'Description2' || k.includes('Description2'));
+      const desc3Key = keys.find(k => k.trim() === 'Description3' || k.includes('Description3'));
+      
+      const desc1 = desc1Key ? (transaction as any)[desc1Key] || '' : '';
+      const desc2 = desc2Key ? (transaction as any)[desc2Key] || '' : '';
+      const desc3 = desc3Key ? (transaction as any)[desc3Key] || '' : '';
+      description = [desc1, desc2, desc3].filter(d => d && String(d).trim()).join(' ').trim();
+    } else {
+      // Revolut: single Description field
+      description = transaction.Description || transaction.description || '';
+    }
+    
+    // Extract amount
+    let amount = 0;
+    if (isAIB) {
+      // AIB: use Debit Amount (negative) or Credit Amount (positive)
+      const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
+      const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
+      
+      const debitAmount = debitKey ? (transaction as any)[debitKey] : '';
+      const creditAmount = creditKey ? (transaction as any)[creditKey] : '';
+      
+      if (debitAmount && String(debitAmount).trim()) {
+        amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
+      } else if (creditAmount && String(creditAmount).trim()) {
+        amount = parseFloat(String(creditAmount).replace(/,/g, ''));
+      }
+    } else {
+      // Revolut: single Amount field (already signed)
+      amount = parseFloat(transaction.Amount || transaction.amount || '0');
+    }
+    
+    // Extract transaction type
+    let type = '';
+    if (isAIB) {
+      const typeKey = keys.find(k => k.trim() === 'Transaction Type' || k.includes('Transaction Type'));
+      type = typeKey ? String((transaction as any)[typeKey] || '').toUpperCase() : '';
+    } else {
+      type = (transaction.Type || transaction.type || '').toUpperCase();
+    }
+    
+    if (amount > 0) return; // Skip credits
     if (type === 'EXCHANGE' || type === 'TRANSFER') return;
     if (!transactionsByDescription[description]) {
       transactionsByDescription[description] = {
@@ -135,11 +186,17 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
     if (Math.abs(amount) > Math.abs(transactionsByDescription[description].maxAmount)) {
       transactionsByDescription[description].maxAmount = amount;
     }
-    const date =
-      (transaction as any)['Completed Date'] ||
+    // Extract date
+    let date = '';
+    if (isAIB) {
+      const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
+      date = dateKey ? (transaction as any)[dateKey] || '' : '';
+    } else {
+      date = (transaction as any)['Completed Date'] ||
       (transaction as any)['Started Date'] ||
       transaction.Date ||
-      transaction.date;
+             transaction.date || '';
+    }
     if (date) {
       const transactionDate = new Date(date);
       transactionsByDescription[description].dates.push(transactionDate);
