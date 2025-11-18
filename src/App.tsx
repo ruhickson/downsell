@@ -215,11 +215,15 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
         // Only add if date is valid
         if (!isNaN(transactionDate.getTime())) {
           transactionsByDescription[description].dates.push(transactionDate);
-      if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
-        transactionsByDescription[description].firstDate = transactionDate;
-      }
-      if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
-        transactionsByDescription[description].lastDate = transactionDate;
+          if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
+            transactionsByDescription[description].firstDate = transactionDate;
+          }
+          if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
+            transactionsByDescription[description].lastDate = transactionDate;
+          }
+        }
+      } catch (e) {
+        // If parsing fails, skip this transaction's date
       }
     }
   });
