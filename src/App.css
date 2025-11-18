@@ -641,3 +641,13 @@ input[type="file"]:hover {
     gap: 0.7rem;
   }
 }
+
+/* Transaction filter dropdown styling */
+.transaction-filter-select {
+  color: white !important;
+}
+
+.transaction-filter-select option {
+  background: #2a3b4c !important;
+  color: white !important;
+}
