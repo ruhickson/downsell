@@ -124,15 +124,9 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
     // Extract description
     let description = '';
     if (isAIB) {
-      // AIB: concatenate Description1, Description2, Description3
+      // AIB: use only Description1
       const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-      const desc2Key = keys.find(k => k.trim() === 'Description2' || k.includes('Description2'));
-      const desc3Key = keys.find(k => k.trim() === 'Description3' || k.includes('Description3'));
-      
-      const desc1 = desc1Key ? (transaction as any)[desc1Key] || '' : '';
-      const desc2 = desc2Key ? (transaction as any)[desc2Key] || '' : '';
-      const desc3 = desc3Key ? (transaction as any)[desc3Key] || '' : '';
-      description = [desc1, desc2, desc3].filter(d => d && String(d).trim()).join(' ').trim();
+      description = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
     } else {
       // Revolut: single Description field
       description = transaction.Description || transaction.description || '';
@@ -214,12 +208,12 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
         
         // Only add if date is valid
         if (!isNaN(transactionDate.getTime())) {
-          transactionsByDescription[description].dates.push(transactionDate);
-          if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
-            transactionsByDescription[description].firstDate = transactionDate;
-          }
-          if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
-            transactionsByDescription[description].lastDate = transactionDate;
+      transactionsByDescription[description].dates.push(transactionDate);
+      if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
+        transactionsByDescription[description].firstDate = transactionDate;
+      }
+      if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
+        transactionsByDescription[description].lastDate = transactionDate;
           }
         }
       } catch (e) {
@@ -1766,14 +1760,9 @@ const App: React.FC = () => {
                         // Extract description
                         let description = '';
                         if (isAIB) {
+                          // AIB: use only Description1
                           const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-                          const desc2Key = keys.find(k => k.trim() === 'Description2' || k.includes('Description2'));
-                          const desc3Key = keys.find(k => k.trim() === 'Description3' || k.includes('Description3'));
-                          
-                          const desc1 = desc1Key ? (transaction as any)[desc1Key] || '' : '';
-                          const desc2 = desc2Key ? (transaction as any)[desc2Key] || '' : '';
-                          const desc3 = desc3Key ? (transaction as any)[desc3Key] || '' : '';
-                          description = [desc1, desc2, desc3].filter(d => d && String(d).trim()).join(' ').trim();
+                          description = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
                         } else {
                           const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
                           description = descKey ? (transaction as any)[descKey] || '' : '';
