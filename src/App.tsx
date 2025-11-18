@@ -1664,8 +1664,8 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Filtered Transactions */}
-                    {useMemo(() => {
-                      return csvData.filter((transaction) => {
+                    {(() => {
+                      const filteredTransactions = csvData.filter((transaction) => {
                         // Get all keys to help with field access
                         const keys = Object.keys(transaction);
                         
@@ -1744,7 +1744,8 @@ const App: React.FC = () => {
                         
                         return true;
                       });
-                    }, [csvData, subscriptions, transactionFilter, transactionSearch, amountFilterType, amountFilterValue]).map((transaction, index) => {
+                      
+                      return filteredTransactions.map((transaction, index) => {
                             // Get all keys to help with debugging and field access
                             const keys = Object.keys(transaction);
                             
@@ -1876,7 +1877,8 @@ const App: React.FC = () => {
                                 </td>
                               </tr>
                             );
-                          })}
+                          });
+                    })()}
                         </tbody>
                       </table>
                     </div>
