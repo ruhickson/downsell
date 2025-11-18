@@ -1573,6 +1573,143 @@ const App: React.FC = () => {
                 )}
               </div>
             )}
+            {activeTab === 'Transactions' && (
+              <div>
+                <h1>All Transactions</h1>
+                
+                {csvData.length > 0 ? (
+                  <>
+                    <p style={{ marginBottom: '2rem', color: '#bfc9da', fontSize: '1.05rem' }}>
+                      View all transactions from your bank statement. Subscriptions are highlighted in red, credits in green, and debits in orange.
+                    </p>
+
+                    <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', overflow: 'hidden' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
+                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Date</th>
+                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Description</th>
+                            <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Amount</th>
+                            <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {csvData.map((transaction, index) => {
+                            // Detect bank format and extract fields accordingly
+                            const isAIB = !!(transaction as any)['Posted Account'] || !!(transaction as any)['Posted Transactions Date'] || !!(transaction as any)['Description1'];
+                            const isRevolut = !!(transaction as any)['Type'] || !!(transaction as any)['Completed Date'] || !!(transaction as any)['Started Date'];
+                            
+                            // Extract description
+                            let description = '';
+                            if (isAIB) {
+                              // AIB: concatenate Description1, Description2, Description3
+                              const desc1 = (transaction as any)['Description1'] || '';
+                              const desc2 = (transaction as any)['Description2'] || '';
+                              const desc3 = (transaction as any)['Description3'] || '';
+                              description = [desc1, desc2, desc3].filter(d => d && d.trim()).join(' ').trim();
+                            } else {
+                              // Revolut: single Description field
+                              description = transaction.Description || transaction.description || '';
+                            }
+                            
+                            // Extract amount
+                            let amount = 0;
+                            if (isAIB) {
+                              // AIB: use Debit Amount (negative) or Credit Amount (positive)
+                              const debitAmount = (transaction as any)['Debit Amount'] || '';
+                              const creditAmount = (transaction as any)['Credit Amount'] || '';
+                              if (debitAmount && debitAmount.trim()) {
+                                amount = -parseFloat(debitAmount.replace(/,/g, ''));
+                              } else if (creditAmount && creditAmount.trim()) {
+                                amount = parseFloat(creditAmount.replace(/,/g, ''));
+                              }
+                            } else {
+                              // Revolut: single Amount field (already signed)
+                              amount = parseFloat(transaction.Amount || transaction.amount || '0');
+                            }
+                            
+                            // Extract date
+                            let date = '';
+                            if (isAIB) {
+                              date = (transaction as any)['Posted Transactions Date'] || '';
+                            } else {
+                              date = (transaction as any)['Completed Date'] || 
+                                     (transaction as any)['Started Date'] || 
+                                     transaction.Date || 
+                                     transaction.date || '';
+                            }
+                            
+                            const balance = parseFloat((transaction as any).Balance || (transaction as any).balance || '0');
+                            
+                            // Check if this transaction is a subscription
+                            const isSubscription = subscriptions.some(sub => 
+                              sub.description.toLowerCase() === description.toLowerCase()
+                            );
+                            
+                            // Determine transaction type
+                            const isCredit = amount > 0;
+                            const isDebit = amount < 0;
+                            
+                            // Set row background color
+                            let rowBgColor = 'transparent';
+                            if (isSubscription) {
+                              rowBgColor = 'rgba(247, 37, 133, 0.15)'; // Soft red for subscriptions
+                            } else if (isCredit) {
+                              rowBgColor = 'rgba(76, 201, 240, 0.15)'; // Soft green for credits
+                            } else if (isDebit) {
+                              rowBgColor = 'rgba(255, 165, 0, 0.15)'; // Soft orange for debits
+                            }
+                            
+                            // Format date
+                            let formattedDate = date;
+                            try {
+                              // Try to parse and format the date
+                              if (date.includes('/')) {
+                                // AIB format: DD/MM/YYYY
+                                const [day, month, year] = date.split('/');
+                                formattedDate = `${year}-${month}-${day}`;
+                              } else if (date.includes('-') && date.includes(' ')) {
+                                // Revolut format: YYYY-MM-DD HH:MM:SS
+                                formattedDate = date.split(' ')[0];
+                              }
+                            } catch (e) {
+                              // Keep original if parsing fails
+                            }
+                            
+                            return (
+                              <tr 
+                                key={index} 
+                                style={{ 
+                                  backgroundColor: rowBgColor,
+                                  borderBottom: index < csvData.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+                                  transition: 'background-color 0.2s'
+                                }}
+                              >
+                                <td style={{ padding: '1rem', color: 'white' }}>{formattedDate}</td>
+                                <td style={{ padding: '1rem', color: 'white' }}>{description}</td>
+                                <td style={{ 
+                                  padding: '1rem', 
+                                  textAlign: 'right', 
+                                  color: isCredit ? '#4cc9f0' : 'white', 
+                                  fontWeight: 500 
+                                }}>
+                                  {amount > 0 ? '+' : ''}€{Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                                <td style={{ padding: '1rem', textAlign: 'right', color: 'white' }}>
+                                  €{balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ marginTop: '2rem', color: '#888' }}>No data loaded. Please upload a CSV file.</p>
+                )}
+              </div>
+            )}
             {activeTab === 'Account (soon)' && (
               <div className="tab-placeholder"><h2>Account</h2><p>Account management features coming soon.</p></div>
             )}
