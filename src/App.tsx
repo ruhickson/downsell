@@ -1909,11 +1909,6 @@ const App: React.FC = () => {
                               k.includes('Posted Transactions Date') || 
                               k.includes('Description1')
                             );
-                            const isRevolut = keys.some(k => 
-                              k.includes('Type') && !k.includes('Transaction Type') ||
-                              k.includes('Completed Date') ||
-                              k.includes('Started Date')
-                            );
                             
                             // Extract description
                             let description = '';
