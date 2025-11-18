@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import Papa from 'papaparse';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import {
@@ -15,7 +15,6 @@ import {
   Filler,
 } from 'chart.js';
 import './App.css';
-import { listModels } from './gemini';
 import jsPDF from 'jspdf';
 
 ChartJS.register(
@@ -239,7 +238,7 @@ function fetchStats(): Record<string, number> {
     return stored ? JSON.parse(stored) : {};
   } catch (error) {
     console.warn('Failed to fetch statistics from localStorage:', error);
-    return {};
+  return {};
   }
 }
 
@@ -262,8 +261,11 @@ const App: React.FC = () => {
   const [dragActive, setDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const inputRef = React.useRef<HTMLInputElement>(null);
-  const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
+  const [transactionFilter, setTransactionFilter] = useState<string>('All');
+  const [transactionSearch, setTransactionSearch] = useState<string>('');
+  const [amountFilterType, setAmountFilterType] = useState<string>('none');
+  const [amountFilterValue, setAmountFilterValue] = useState<string>('');
   const frequencyOptions = [
     'All',
     'Once-off/yearly',
@@ -275,30 +277,6 @@ const App: React.FC = () => {
     'Daily',
   ];
 
-  // Call ListModels on mount to see available models
-  useEffect(() => {
-    if (GEMINI_API_KEY) {
-      listModels(GEMINI_API_KEY)
-        .then((data) => {
-          console.log('Available Gemini models:', data);
-          if (data.models) {
-            const generateContentModels = data.models
-              .filter((model: any) => 
-                model.supportedGenerationMethods?.includes('generateContent')
-              )
-              .map((model: any) => ({
-                name: model.name,
-                displayName: model.displayName,
-                supportedMethods: model.supportedGenerationMethods
-              }));
-            console.log('Models supporting generateContent:', generateContentModels);
-          }
-        })
-        .catch((error) => {
-          console.error('Error listing models:', error);
-        });
-    }
-  }, [GEMINI_API_KEY]);
 
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
@@ -447,7 +425,7 @@ const App: React.FC = () => {
   // Identify high-confidence subscriptions (same price for 6 months straight)
   const highConfidenceSubscriptions = useMemo(() => {
     return subscriptions.filter((sub) => {
-      const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
+    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
       if (raw.amounts.length < 6) return false; // Need at least 6 payments
       
       // Sort by date
@@ -576,7 +554,7 @@ const App: React.FC = () => {
       y = 40;
     }
     
-    doc.setFontSize(16);
+      doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
     doc.text('Top 15 Outgoings', margin, y);
@@ -640,9 +618,9 @@ const App: React.FC = () => {
     
     // Cumulative Spending Trends section
     if (y > 600) {
-      doc.addPage();
-      y = 40;
-    }
+        doc.addPage();
+        y = 40;
+      }
     
     doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
@@ -785,7 +763,7 @@ const App: React.FC = () => {
   }, []);
 
   return (
-    <div className="app-layout">
+      <div className="app-layout">
         {/* Sidebar */}
         <aside className={`sidebar${sidebarOpen ? ' sidebar-open' : ''}`}>
           <div className="sidebar-logo" onClick={() => window.location.reload()} style={{ cursor: 'pointer' }}>
@@ -796,14 +774,14 @@ const App: React.FC = () => {
               const isAccountTab = tab.label.startsWith('Account');
               const isDisabled = isAccountTab || ((tab.label === 'Report' || tab.label === 'Actions' || tab.label === 'Transactions') && csvData.length === 0);
               return (
-                <div
-                  key={tab.label}
+              <div
+                key={tab.label}
                   className={`sidebar-item ${activeTab === tab.label ? 'sidebar-item-active' : ''} ${isDisabled ? 'sidebar-item-disabled' : ''}`}
                   onClick={() => !isDisabled && handleSidebarTabClick(tab.label)}
-                >
-                  <span className="sidebar-icon">{tab.icon}</span>
-                  <span className="sidebar-label">{tab.label}</span>
-                </div>
+              >
+                <span className="sidebar-icon">{tab.icon}</span>
+                <span className="sidebar-label">{tab.label}</span>
+              </div>
               );
             })}
           </nav>
@@ -1350,8 +1328,8 @@ const App: React.FC = () => {
                                   </button>
                                   <button className="alt-btn">Find Alternative (coming soon)</button>
                                 </div>
-                              </div>
-                            </div>
+                                    </div>
+                                  </div>
                           );
                         })}
                     </div>
@@ -1367,7 +1345,7 @@ const App: React.FC = () => {
                   {csvData.length > 0 && (
                     <button className="optimize-btn" onClick={handleDownloadReport}>Download PDF Report</button>
                   )}
-                </div>
+                                  </div>
                 
                 {csvData.length > 0 ? (
                   <>
@@ -1495,8 +1473,8 @@ const App: React.FC = () => {
                   </>
                 ) : (
                   <p style={{ marginTop: '2rem', color: '#888' }}>Please upload a CSV file to generate the report.</p>
-                )}
-              </div>
+                                )}
+                              </div>
             )}
             {activeTab === 'Actions' && (
               <div>
@@ -1554,23 +1532,23 @@ const App: React.FC = () => {
                                       >
                                         Cancel
                                       </a>
-                                    </div>
+                            </div>
                                   </td>
                                 </tr>
-                              );
-                            })}
+                          );
+                        })}
                           </tbody>
                         </table>
-                      </div>
+                    </div>
                     ) : (
                       <p style={{ marginTop: '2rem', color: '#888' }}>
                         No high-confidence subscriptions found. High-confidence subscriptions are those with the same price for 6+ consecutive months.
                       </p>
-                    )}
-                  </>
+                )}
+              </>
                 ) : (
                   <p style={{ marginTop: '2rem', color: '#888' }}>Please upload a CSV file to see subscription actions.</p>
-                )}
+            )}
               </div>
             )}
             {activeTab === 'Transactions' && (
@@ -1579,67 +1557,265 @@ const App: React.FC = () => {
                 
                 {csvData.length > 0 ? (
                   <>
-                    <p style={{ marginBottom: '2rem', color: '#bfc9da', fontSize: '1.05rem' }}>
+                    <p style={{ marginBottom: '1.5rem', color: '#bfc9da', fontSize: '1.05rem' }}>
                       View all transactions from your bank statement. Subscriptions are highlighted in red, credits in green, and debits in orange.
                     </p>
 
-                    <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
-                      <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', overflow: 'hidden' }}>
-                        <thead>
-                          <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
-                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Date</th>
-                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Description</th>
-                            <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Amount</th>
-                            <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Balance</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {csvData.map((transaction, index) => {
-                            // Detect bank format and extract fields accordingly
-                            const isAIB = !!(transaction as any)['Posted Account'] || !!(transaction as any)['Posted Transactions Date'] || !!(transaction as any)['Description1'];
-                            const isRevolut = !!(transaction as any)['Type'] || !!(transaction as any)['Completed Date'] || !!(transaction as any)['Started Date'];
+                    {/* Filter and Search Controls */}
+                    <div style={{ 
+                      display: 'flex', 
+                      gap: '1rem', 
+                      marginBottom: '1.5rem', 
+                      flexWrap: 'wrap',
+                      alignItems: 'center'
+                    }}>
+                      <div style={{ flex: '1', minWidth: '200px' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
+                          Filter by Type
+                        </label>
+                        <select
+                          value={transactionFilter}
+                          onChange={(e) => setTransactionFilter(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '1rem',
+                            fontFamily: 'Inter, sans-serif',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="All">All Transactions</option>
+                          <option value="Credit">Credits Only</option>
+                          <option value="Debit">Debits Only</option>
+                          <option value="Subscription">Subscriptions Only</option>
+                        </select>
+                      </div>
+                      <div style={{ flex: '2', minWidth: '250px' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
+                          Search
+                        </label>
+                        <input
+                          type="text"
+                          value={transactionSearch}
+                          onChange={(e) => setTransactionSearch(e.target.value)}
+                          placeholder="Search by description..."
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '1rem',
+                            fontFamily: 'Inter, sans-serif',
+                            outline: 'none'
+                          }}
+                        />
+                      </div>
+                      <div style={{ flex: '1', minWidth: '150px' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
+                          Amount Filter
+                        </label>
+                        <select
+                          value={amountFilterType}
+                          onChange={(e) => setAmountFilterType(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '1rem',
+                            fontFamily: 'Inter, sans-serif',
+                            cursor: 'pointer',
+                            marginBottom: '0.5rem'
+                          }}
+                        >
+                          <option value="none">No Filter</option>
+                          <option value="greater">Greater Than</option>
+                          <option value="less">Less Than</option>
+                        </select>
+                        {amountFilterType !== 'none' && (
+                          <input
+                            type="number"
+                            value={amountFilterValue}
+                            onChange={(e) => setAmountFilterValue(e.target.value)}
+                            placeholder="Amount..."
+                            step="0.01"
+                            style={{
+                              width: '100%',
+                              padding: '0.75rem',
+                              background: 'rgba(255, 255, 255, 0.1)',
+                              border: '1px solid rgba(255, 255, 255, 0.2)',
+                              borderRadius: '8px',
+                              color: 'white',
+                              fontSize: '1rem',
+                              fontFamily: 'Inter, sans-serif',
+                              outline: 'none'
+                            }}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Filtered Transactions */}
+                    {useMemo(() => {
+                      return csvData.filter((transaction) => {
+                        // Get all keys to help with field access
+                        const keys = Object.keys(transaction);
+                        
+                        // Detect bank format
+                        const isAIB = keys.some(k => 
+                          k.includes('Posted Account') || 
+                          k.includes('Posted Transactions Date') || 
+                          k.includes('Description1')
+                        );
+                        
+                        // Extract description
+                        let description = '';
+                        if (isAIB) {
+                          const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
+                          const desc2Key = keys.find(k => k.trim() === 'Description2' || k.includes('Description2'));
+                          const desc3Key = keys.find(k => k.trim() === 'Description3' || k.includes('Description3'));
+                          
+                          const desc1 = desc1Key ? (transaction as any)[desc1Key] || '' : '';
+                          const desc2 = desc2Key ? (transaction as any)[desc2Key] || '' : '';
+                          const desc3 = desc3Key ? (transaction as any)[desc3Key] || '' : '';
+                          description = [desc1, desc2, desc3].filter(d => d && String(d).trim()).join(' ').trim();
+                        } else {
+                          const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
+                          description = descKey ? (transaction as any)[descKey] || '' : '';
+                        }
+                        
+                        // Extract amount
+                        let amount = 0;
+                        if (isAIB) {
+                          const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
+                          const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
+                          
+                          const debitAmount = debitKey ? (transaction as any)[debitKey] : '';
+                          const creditAmount = creditKey ? (transaction as any)[creditKey] : '';
+                          
+                          if (debitAmount && String(debitAmount).trim()) {
+                            amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
+                          } else if (creditAmount && String(creditAmount).trim()) {
+                            amount = parseFloat(String(creditAmount).replace(/,/g, ''));
+                          }
+                        } else {
+                          const amountKey = keys.find(k => k.trim() === 'Amount' || k.includes('Amount'));
+                          amount = amountKey ? parseFloat((transaction as any)[amountKey] || '0') : 0;
+                        }
+                        
+                        // Check if subscription
+                        const isSubscription = subscriptions.some(sub => 
+                          sub.description.toLowerCase() === description.toLowerCase()
+                        );
+                        const isCredit = amount > 0;
+                        const isDebit = amount < 0;
+                        
+                        // Apply type filter
+                        if (transactionFilter === 'Credit' && !isCredit) return false;
+                        if (transactionFilter === 'Debit' && !isDebit) return false;
+                        if (transactionFilter === 'Subscription' && !isSubscription) return false;
+                        
+                        // Apply search filter
+                        if (transactionSearch && !description.toLowerCase().includes(transactionSearch.toLowerCase())) {
+                          return false;
+                        }
+                        
+                        // Apply amount filter
+                        if (amountFilterType !== 'none' && amountFilterValue) {
+                          const filterAmount = parseFloat(amountFilterValue);
+                          if (!isNaN(filterAmount)) {
+                            const absAmount = Math.abs(amount);
+                            if (amountFilterType === 'greater' && absAmount <= filterAmount) {
+                              return false;
+                            }
+                            if (amountFilterType === 'less' && absAmount >= filterAmount) {
+                              return false;
+                            }
+                          }
+                        }
+                        
+                        return true;
+                      });
+                    }, [csvData, subscriptions, transactionFilter, transactionSearch, amountFilterType, amountFilterValue]).map((transaction, index) => {
+                            // Get all keys to help with debugging and field access
+                            const keys = Object.keys(transaction);
+                            
+                            // Detect bank format - check for AIB-specific fields (try with and without spaces)
+                            const isAIB = keys.some(k => 
+                              k.includes('Posted Account') || 
+                              k.includes('Posted Transactions Date') || 
+                              k.includes('Description1')
+                            );
+                            const isRevolut = keys.some(k => 
+                              k.includes('Type') && !k.includes('Transaction Type') ||
+                              k.includes('Completed Date') ||
+                              k.includes('Started Date')
+                            );
                             
                             // Extract description
                             let description = '';
                             if (isAIB) {
                               // AIB: concatenate Description1, Description2, Description3
-                              const desc1 = (transaction as any)['Description1'] || '';
-                              const desc2 = (transaction as any)['Description2'] || '';
-                              const desc3 = (transaction as any)['Description3'] || '';
-                              description = [desc1, desc2, desc3].filter(d => d && d.trim()).join(' ').trim();
+                              // Try various field name variations
+                              const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
+                              const desc2Key = keys.find(k => k.trim() === 'Description2' || k.includes('Description2'));
+                              const desc3Key = keys.find(k => k.trim() === 'Description3' || k.includes('Description3'));
+                              
+                              const desc1 = desc1Key ? (transaction as any)[desc1Key] || '' : '';
+                              const desc2 = desc2Key ? (transaction as any)[desc2Key] || '' : '';
+                              const desc3 = desc3Key ? (transaction as any)[desc3Key] || '' : '';
+                              description = [desc1, desc2, desc3].filter(d => d && String(d).trim()).join(' ').trim();
                             } else {
                               // Revolut: single Description field
-                              description = transaction.Description || transaction.description || '';
+                              const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
+                              description = descKey ? (transaction as any)[descKey] || '' : '';
                             }
                             
                             // Extract amount
                             let amount = 0;
                             if (isAIB) {
                               // AIB: use Debit Amount (negative) or Credit Amount (positive)
-                              const debitAmount = (transaction as any)['Debit Amount'] || '';
-                              const creditAmount = (transaction as any)['Credit Amount'] || '';
-                              if (debitAmount && debitAmount.trim()) {
-                                amount = -parseFloat(debitAmount.replace(/,/g, ''));
-                              } else if (creditAmount && creditAmount.trim()) {
-                                amount = parseFloat(creditAmount.replace(/,/g, ''));
+                              const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
+                              const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
+                              
+                              const debitAmount = debitKey ? (transaction as any)[debitKey] : '';
+                              const creditAmount = creditKey ? (transaction as any)[creditKey] : '';
+                              
+                              if (debitAmount && String(debitAmount).trim()) {
+                                amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
+                              } else if (creditAmount && String(creditAmount).trim()) {
+                                amount = parseFloat(String(creditAmount).replace(/,/g, ''));
                               }
                             } else {
                               // Revolut: single Amount field (already signed)
-                              amount = parseFloat(transaction.Amount || transaction.amount || '0');
+                              const amountKey = keys.find(k => k.trim() === 'Amount' || k.includes('Amount'));
+                              amount = amountKey ? parseFloat((transaction as any)[amountKey] || '0') : 0;
                             }
                             
                             // Extract date
                             let date = '';
                             if (isAIB) {
-                              date = (transaction as any)['Posted Transactions Date'] || '';
+                              const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
+                              date = dateKey ? (transaction as any)[dateKey] || '' : '';
                             } else {
-                              date = (transaction as any)['Completed Date'] || 
-                                     (transaction as any)['Started Date'] || 
-                                     transaction.Date || 
-                                     transaction.date || '';
+                              const completedKey = keys.find(k => k.trim() === 'Completed Date' || k.includes('Completed Date'));
+                              const startedKey = keys.find(k => k.trim() === 'Started Date' || k.includes('Started Date'));
+                              date = completedKey ? (transaction as any)[completedKey] : 
+                                     startedKey ? (transaction as any)[startedKey] : 
+                                     transaction.Date || transaction.date || '';
                             }
                             
-                            const balance = parseFloat((transaction as any).Balance || (transaction as any).balance || '0');
+                            // Extract balance
+                            const balanceKey = keys.find(k => k.trim() === 'Balance' || k.includes('Balance'));
+                            const balance = balanceKey ? parseFloat((transaction as any)[balanceKey] || '0') : 0;
                             
                             // Check if this transaction is a subscription
                             const isSubscription = subscriptions.some(sub => 
