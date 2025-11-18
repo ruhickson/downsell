@@ -124,9 +124,20 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
     // Extract description
     let description = '';
     if (isAIB) {
-      // AIB: use only Description1
+      // AIB: use only Description1, remove prefixes like VDP-, VDC-, D/D, etc.
       const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-      description = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
+      let rawDescription = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
+      // Remove prefixes like VDP-, VDC-, D/D, etc. (everything up to and including the first hyphen)
+      if (rawDescription.includes('-')) {
+        const parts = rawDescription.split('-');
+        if (parts.length > 1) {
+          description = parts.slice(1).join('-').trim(); // Join in case there are multiple hyphens
+        } else {
+          description = rawDescription;
+        }
+      } else {
+        description = rawDescription;
+      }
     } else {
       // Revolut: single Description field
       description = transaction.Description || transaction.description || '';
@@ -1760,9 +1771,20 @@ const App: React.FC = () => {
                         // Extract description
                         let description = '';
                         if (isAIB) {
-                          // AIB: use only Description1
+                          // AIB: use only Description1, remove prefixes like VDP-, VDC-, D/D, etc.
                           const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-                          description = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
+                          let rawDescription = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
+                          // Remove prefixes like VDP-, VDC-, D/D, etc. (everything up to and including the first hyphen)
+                          if (rawDescription.includes('-')) {
+                            const parts = rawDescription.split('-');
+                            if (parts.length > 1) {
+                              description = parts.slice(1).join('-').trim(); // Join in case there are multiple hyphens
+                            } else {
+                              description = rawDescription;
+                            }
+                          } else {
+                            description = rawDescription;
+                          }
                         } else {
                           const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
                           description = descKey ? (transaction as any)[descKey] || '' : '';
@@ -1840,9 +1862,20 @@ const App: React.FC = () => {
                             // Extract description
                             let description = '';
                             if (isAIB) {
-                              // AIB: use only Description1
+                              // AIB: use only Description1, remove prefixes like VDP-, VDC-, D/D, etc.
                               const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-                              description = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
+                              let rawDescription = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
+                              // Remove prefixes like VDP-, VDC-, D/D, etc. (everything up to and including the first hyphen)
+                              if (rawDescription.includes('-')) {
+                                const parts = rawDescription.split('-');
+                                if (parts.length > 1) {
+                                  description = parts.slice(1).join('-').trim(); // Join in case there are multiple hyphens
+                                } else {
+                                  description = rawDescription;
+                                }
+                              } else {
+                                description = rawDescription;
+                              }
                             } else {
                               // Revolut: single Description field
                               const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
