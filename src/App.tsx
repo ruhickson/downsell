@@ -1840,16 +1840,9 @@ const App: React.FC = () => {
                             // Extract description
                             let description = '';
                             if (isAIB) {
-                              // AIB: concatenate Description1, Description2, Description3
-                              // Try various field name variations
+                              // AIB: use only Description1
                               const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-                              const desc2Key = keys.find(k => k.trim() === 'Description2' || k.includes('Description2'));
-                              const desc3Key = keys.find(k => k.trim() === 'Description3' || k.includes('Description3'));
-                              
-                              const desc1 = desc1Key ? (transaction as any)[desc1Key] || '' : '';
-                              const desc2 = desc2Key ? (transaction as any)[desc2Key] || '' : '';
-                              const desc3 = desc3Key ? (transaction as any)[desc3Key] || '' : '';
-                              description = [desc1, desc2, desc3].filter(d => d && String(d).trim()).join(' ').trim();
+                              description = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
                             } else {
                               // Revolut: single Description field
                               const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
