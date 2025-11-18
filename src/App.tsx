@@ -1749,39 +1749,18 @@ const App: React.FC = () => {
                           }}
                         />
                       </div>
-                      <div style={{ flex: '1', minWidth: '150px' }}>
+                      <div style={{ flex: '1', minWidth: '200px' }}>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
                           Amount Filter
                         </label>
-                        <select
-                          value={amountFilterType}
-                          onChange={(e) => setAmountFilterType(e.target.value)}
-                          style={{
-                            width: '100%',
-                            padding: '0.75rem',
-                            background: 'rgba(255, 255, 255, 0.1)',
-                            border: '1px solid rgba(255, 255, 255, 0.2)',
-                            borderRadius: '8px',
-                            color: 'white',
-                            fontSize: '1rem',
-                            fontFamily: 'Inter, sans-serif',
-                            cursor: 'pointer',
-                            marginBottom: '0.5rem'
-                          }}
-                        >
-                          <option value="none">No Filter</option>
-                          <option value="greater">Greater Than</option>
-                          <option value="less">Less Than</option>
-                        </select>
-                        {amountFilterType !== 'none' && (
-                          <input
-                            type="number"
-                            value={amountFilterValue}
-                            onChange={(e) => setAmountFilterValue(e.target.value)}
-                            placeholder="Amount..."
-                            step="0.01"
+                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                          <select
+                            value={amountFilterType}
+                            onChange={(e) => setAmountFilterType(e.target.value)}
+                            className="transaction-filter-select"
                             style={{
-                              width: '100%',
+                              flex: '1',
+                              minWidth: '120px',
                               padding: '0.75rem',
                               background: 'rgba(255, 255, 255, 0.1)',
                               border: '1px solid rgba(255, 255, 255, 0.2)',
@@ -1789,10 +1768,35 @@ const App: React.FC = () => {
                               color: 'white',
                               fontSize: '1rem',
                               fontFamily: 'Inter, sans-serif',
-                              outline: 'none'
+                              cursor: 'pointer'
                             }}
-                          />
-                        )}
+                          >
+                            <option value="none" style={{ background: '#2a3b4c', color: 'white' }}>No Filter</option>
+                            <option value="greater" style={{ background: '#2a3b4c', color: 'white' }}>Greater Than</option>
+                            <option value="less" style={{ background: '#2a3b4c', color: 'white' }}>Less Than</option>
+                          </select>
+                          {amountFilterType !== 'none' && (
+                            <input
+                              type="number"
+                              value={amountFilterValue}
+                              onChange={(e) => setAmountFilterValue(e.target.value)}
+                              placeholder="Amount..."
+                              step="0.01"
+                              style={{
+                                flex: '1',
+                                minWidth: '100px',
+                                padding: '0.75rem',
+                                background: 'rgba(255, 255, 255, 0.1)',
+                                border: '1px solid rgba(255, 255, 255, 0.2)',
+                                borderRadius: '8px',
+                                color: 'white',
+                                fontSize: '1rem',
+                                fontFamily: 'Inter, sans-serif',
+                                outline: 'none'
+                              }}
+                            />
+                          )}
+                        </div>
                       </div>
                     </div>
 
