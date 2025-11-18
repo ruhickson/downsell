@@ -1664,6 +1664,17 @@ const App: React.FC = () => {
                     </div>
 
                     {/* Filtered Transactions */}
+                    <div style={{ overflowX: 'auto', marginBottom: '2rem' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', overflow: 'hidden' }}>
+                        <thead>
+                          <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
+                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Date</th>
+                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Description</th>
+                            <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Amount</th>
+                            <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Balance</th>
+                          </tr>
+                        </thead>
+                        <tbody>
                     {(() => {
                       const filteredTransactions = csvData.filter((transaction) => {
                         // Get all keys to help with field access
