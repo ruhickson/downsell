@@ -224,6 +224,7 @@ const TAB_LABELS = [
   { label: 'Analysis', icon: '📊' },
   { label: 'Report', icon: '📄' },
   { label: 'Actions', icon: '⚡' },
+  { label: 'Transactions', icon: '💳' },
   { label: 'Account (soon)', icon: '👤' },
   { label: 'About', icon: 'ℹ️' },
 ];
@@ -793,7 +794,7 @@ const App: React.FC = () => {
           <nav className="sidebar-nav">
             {TAB_LABELS.map(tab => {
               const isAccountTab = tab.label.startsWith('Account');
-              const isDisabled = isAccountTab || ((tab.label === 'Report' || tab.label === 'Actions') && csvData.length === 0);
+              const isDisabled = isAccountTab || ((tab.label === 'Report' || tab.label === 'Actions' || tab.label === 'Transactions') && csvData.length === 0);
               return (
                 <div
                   key={tab.label}
