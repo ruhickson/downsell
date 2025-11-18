@@ -975,7 +975,7 @@ const App: React.FC = () => {
                     We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
                   </p>
                   <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Upload your bank statement (CSV) and get insights in minutes. We recommend 12 months of data for the clearest picture, but shorter periods work too.
+                    Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
                   </p>
                 </div>
                 <div style={{ 
@@ -1708,6 +1708,7 @@ const App: React.FC = () => {
                         <select
                           value={transactionFilter}
                           onChange={(e) => setTransactionFilter(e.target.value)}
+                          className="transaction-filter-select"
                           style={{
                             width: '100%',
                             padding: '0.75rem',
@@ -1720,10 +1721,10 @@ const App: React.FC = () => {
                             cursor: 'pointer'
                           }}
                         >
-                          <option value="All">All Transactions</option>
-                          <option value="Credit">Credits Only</option>
-                          <option value="Debit">Debits Only</option>
-                          <option value="Subscription">Subscriptions Only</option>
+                          <option value="All" style={{ background: '#2a3b4c', color: 'white' }}>All Transactions</option>
+                          <option value="Credit" style={{ background: '#2a3b4c', color: 'white' }}>Credits Only</option>
+                          <option value="Debit" style={{ background: '#2a3b4c', color: 'white' }}>Debits Only</option>
+                          <option value="Subscription" style={{ background: '#2a3b4c', color: 'white' }}>Subscriptions Only</option>
                         </select>
                       </div>
                       <div style={{ flex: '2', minWidth: '250px' }}>
