@@ -858,7 +858,13 @@ const App: React.FC = () => {
                 }}>
                   <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
                   <p style={{ margin: 0 }}>
-                    Downsell is a tool by <strong>Broc.fi</strong> whereby you can analyse your own finances and better understand where your money is going, where you can save, and direct you to make immediate improvements if you so choose. Upload a CSV to get started. We recommend you use at least 12 months of data, but insights can be gained on a shorter timeline if 12 months are not available.
+                    Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
+                  </p>
+                  <p style={{ margin: '0.75rem 0 0 0' }}>
+                    We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
+                  </p>
+                  <p style={{ margin: '0.75rem 0 0 0' }}>
+                    Upload your bank statement (CSV) and get insights in minutes. We recommend 12 months of data for the clearest picture, but shorter periods work too.
                   </p>
                 </div>
                 <div style={{ 
@@ -873,9 +879,34 @@ const App: React.FC = () => {
                 }}>
                   <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
                   <p style={{ margin: 0 }}>
-                    All data is processed entirely on your device—nothing is stored on our servers or sent anywhere. 
-                    This is a <strong>free and public utility</strong> designed to help everyone understand their finances better. 
-                    Your financial data never leaves your browser.
+                    All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
+                  </p>
+                  <p style={{ margin: '0.75rem 0 0 0' }}>
+                    This is a free public tool designed to help everyone understand their finances better.
+                  </p>
+                </div>
+                <div style={{ 
+                  padding: '1rem 1.5rem', 
+                  background: 'rgba(0, 217, 255, 0.1)', 
+                  border: '1px solid rgba(0, 217, 255, 0.3)', 
+                  borderRadius: '12px', 
+                  marginBottom: '1.5rem',
+                  color: '#bfc9da',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.6'
+                }}>
+                  <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
+                  <p style={{ margin: 0 }}>
+                    Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
+                  </p>
+                  <p style={{ margin: '0.75rem 0 0 0' }}>
+                    Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
+                  </p>
+                  <p style={{ margin: '0.75rem 0 0 0' }}>
+                    Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
+                  </p>
+                  <p style={{ margin: '0.75rem 0 0 0' }}>
+                    Join the waitlist and be first when we launch.
                   </p>
                 </div>
                 <div style={{ 
