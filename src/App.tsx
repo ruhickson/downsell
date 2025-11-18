@@ -538,12 +538,63 @@ const App: React.FC = () => {
     
     // Process all transactions
     csvData.forEach((tx) => {
-      const amount = parseFloat(tx.Amount || tx.amount || '0');
+      // Get all keys to help with field access
+      const keys = Object.keys(tx);
+      
+      // Detect bank format
+      const isAIB = keys.some(k => 
+        k.includes('Posted Account') || 
+        k.includes('Posted Transactions Date') || 
+        k.includes('Description1')
+      );
+      
+      // Extract amount
+      let amount = 0;
+      if (isAIB) {
+        // AIB: use Debit Amount (negative) or Credit Amount (positive)
+        const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
+        const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
+        
+        const debitAmount = debitKey ? (tx as any)[debitKey] : '';
+        const creditAmount = creditKey ? (tx as any)[creditKey] : '';
+        
+        if (debitAmount && String(debitAmount).trim()) {
+          amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
+        } else if (creditAmount && String(creditAmount).trim()) {
+          amount = parseFloat(String(creditAmount).replace(/,/g, ''));
+        }
+      } else {
+        // Revolut: single Amount field
+        amount = parseFloat((tx as any).Amount || (tx as any).amount || '0');
+      }
+      
       if (amount >= 0) return; // Only outgoing transactions
       
-      const dateStr = ((tx as any)['Completed Date'] || (tx as any)['Started Date'] || tx.Date || tx.date || '').toString();
-      const date = new Date(dateStr);
-      if (isNaN(date.getTime())) return;
+      // Extract date
+      let date: Date | null = null;
+      if (isAIB) {
+        // AIB: use Posted Transactions Date (DD/MM/YYYY format)
+        const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
+        if (dateKey) {
+          const dateStr = String((tx as any)[dateKey] || '').trim();
+          if (dateStr) {
+            // Parse DD/MM/YYYY format
+            const parts = dateStr.split('/');
+            if (parts.length === 3) {
+              const day = parseInt(parts[0], 10);
+              const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
+              const year = parseInt(parts[2], 10);
+              date = new Date(year, month, day);
+            }
+          }
+        }
+      } else {
+        // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
+        const dateStr = ((tx as any)['Completed Date'] || (tx as any)['Started Date'] || (tx as any).Date || (tx as any).date || '').toString();
+        date = new Date(dateStr);
+      }
+      
+      if (!date || isNaN(date.getTime())) return;
       
       const monthKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
       if (!monthlyData[monthKey]) {
