@@ -494,15 +494,32 @@ const App: React.FC = () => {
         const rawData = results.data as RawTransaction[];
         const rowCount = rawData.length;
         
-        // Detect bank type from first row
+        // Detect bank type from first row (check in order: Revolut, AIB, BOI)
         const firstRow = rawData[0];
         const keys = firstRow ? Object.keys(firstRow) : [];
-        const isAIB = keys.some(k => 
+        
+        // Check for Revolut
+        const isRevolut = keys.some(k => 
+          k.includes('Type') && 
+          (k.includes('Started Date') || k.includes('Completed Date'))
+        );
+        
+        // Check for AIB
+        const isAIB = !isRevolut && keys.some(k => 
           k.includes('Posted Account') || 
           k.includes('Posted Transactions Date') || 
           k.includes('Description1')
         );
-        const bankType = isAIB ? 'AIB' : 'Revolut';
+        
+        // Check for BOI
+        const isBOI = !isRevolut && !isAIB && keys.some(k => 
+          k.trim() === 'Date' && 
+          keys.some(k2 => k2.trim() === 'Details') &&
+          keys.some(k3 => k3.trim() === 'Debit') &&
+          keys.some(k4 => k4.trim() === 'Credit')
+        );
+        
+        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : 'Revolut');
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -510,6 +527,8 @@ const App: React.FC = () => {
           newCounters[bankType] = (newCounters[bankType] || 0) + 1;
           const account = bankType === 'AIB' 
             ? `AIB-${newCounters[bankType]}` 
+            : bankType === 'BOI'
+            ? `BOI-${newCounters[bankType]}`
             : `REV-${newCounters[bankType]}`;
           
           // Normalize all transactions with account identifier
