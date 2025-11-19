@@ -1,21 +1,26 @@
-// Netlify Analytics tracking utility
+// Analytics tracking utility (Netlify Functions)
 
-declare global {
-  interface Window {
-    netlify?: {
-      track: (eventName: string, data?: Record<string, any>) => void;
-    };
-  }
-}
-
-// Track custom events for Netlify Analytics
+// Track custom events via Netlify Function
 export function trackEvent(eventName: string, data?: Record<string, any>) {
-  // Check if Netlify Analytics is available
-  if (typeof window !== 'undefined' && window.netlify?.track) {
+  if (typeof window !== 'undefined') {
+    // Send event to Netlify Function (will appear in Function Metrics)
     try {
-      window.netlify.track(eventName, data || {});
+      fetch('/.netlify/functions/track-event', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          eventName,
+          data: data || {},
+        }),
+      }).catch((error) => {
+        // Silently fail - don't interrupt user experience
+        console.debug('Event tracking failed (non-blocking):', error);
+      });
     } catch (error) {
-      console.warn('Failed to track event:', error);
+      // Silently fail - don't interrupt user experience
+      console.debug('Event tracking failed (non-blocking):', error);
     }
   }
 }
