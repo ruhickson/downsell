@@ -1282,7 +1282,7 @@ const App: React.FC = () => {
                 }}>
                   <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>📋 Supported Banks</strong>
                   <p style={{ margin: 0 }}>
-                    Downsell currently only works with CSVs exported from <strong>Revolut</strong> and <strong>AIB</strong>, but will be expanding to support more banks in the coming weeks.
+                    Downsell currently works with CSVs exported from <strong>Revolut</strong>, <strong>AIB</strong>, and <strong>Bank of Ireland</strong>. We're expanding to support more banks in the coming weeks.
                   </p>
                 </div>
                 <div className={"upload-area" + (dragActive ? " drag-active" : "")}
