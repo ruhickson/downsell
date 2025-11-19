@@ -1553,9 +1553,9 @@ const App: React.FC = () => {
                                     borderRadius: '6px',
                                     fontSize: '0.85rem',
                                     fontWeight: 600,
-                                    background: 'rgba(139, 0, 139, 0.2)',
-                                    color: '#8b008b',
-                                    border: '1px solid rgba(139, 0, 139, 0.4)',
+                                    background: 'rgba(247, 37, 133, 0.2)',
+                                    color: '#f72585',
+                                    border: '1px solid #f72585',
                                     fontFamily: 'monospace'
                                   }}>
                                     {accounts.join(', ')}
