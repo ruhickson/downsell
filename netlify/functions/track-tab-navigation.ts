@@ -18,13 +18,21 @@ export const handler = async (event: any) => {
   try {
     const eventData = JSON.parse(event.body || '{}');
     const { tabName } = eventData;
+    const timestamp = new Date().toISOString();
+    const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
+    const userAgent = event.headers['user-agent'] || 'unknown';
 
-    console.log('Tab navigation tracked:', {
+    // Structured logging for easy filtering
+    console.log(JSON.stringify({
+      event: 'TAB_NAVIGATION',
       tabName,
-      timestamp: new Date().toISOString(),
-      ip: event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown',
-      userAgent: event.headers['user-agent'] || 'unknown',
-    });
+      timestamp,
+      ip,
+      userAgent,
+    }));
+
+    // Also log a searchable line for quick filtering
+    console.log(`[TAB_NAVIGATION] Tab: ${tabName}`);
 
     return {
       statusCode: 200,

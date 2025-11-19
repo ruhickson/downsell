@@ -18,20 +18,28 @@ export const handler = async (event: any) => {
   try {
     const eventData = JSON.parse(event.body || '{}');
     const { rowCount, bankType, method } = eventData;
+    const timestamp = new Date().toISOString();
+    const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
+    const userAgent = event.headers['user-agent'] || 'unknown';
 
-    console.log('CSV upload tracked:', {
-      rowCount,
-      bankType,
-      method,
-      timestamp: new Date().toISOString(),
-      ip: event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown',
-      userAgent: event.headers['user-agent'] || 'unknown',
-    });
+    // Structured logging for easy filtering
+    console.log(JSON.stringify({
+      event: 'CSV_UPLOAD',
+      rowCount: rowCount || 0,
+      bankType: bankType || 'unknown',
+      method: method || 'unknown',
+      timestamp,
+      ip,
+      userAgent,
+    }));
+
+    // Also log a searchable line for quick filtering
+    console.log(`[CSV_UPLOAD] Bank: ${bankType || 'unknown'} | Rows: ${rowCount || 0} | Method: ${method || 'unknown'}`);
 
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ success: true, rowCount, bankType }),
+      body: JSON.stringify({ success: true, rowCount, bankType, method }),
     };
   } catch (error) {
     console.error('Error tracking CSV upload:', error);
