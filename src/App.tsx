@@ -31,15 +31,21 @@ ChartJS.register(
   Filler
 );
 
+// Raw transaction from CSV (can be from any bank)
+type RawTransaction = {
+  [key: string]: any;
+};
+
+// Normalized transaction format (unified across all banks)
 type Transaction = {
-  Description?: string;
-  description?: string;
-  Amount?: string;
-  amount?: string;
-  Type?: string;
-  type?: string;
-  Date?: string;
-  date?: string;
+  Description: string;
+  Amount: number;
+  Type: string;
+  Date: string;
+  Currency: string;
+  Balance?: number;
+  BankSource: string; // 'AIB' or 'Revolut'
+  OriginalData: RawTransaction; // Keep original for reference
 };
 
 type Subscription = {
@@ -111,67 +117,131 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
   return 'Once-off/yearly';
 }
 
-function analyzeBankStatement(data: Transaction[]): Subscription[] {
-  const transactionsByDescription: Record<string, any> = {};
-  data.forEach((transaction) => {
-    // Detect bank format
-    const keys = Object.keys(transaction);
-    const isAIB = keys.some(k => 
-      k.includes('Posted Account') || 
-      k.includes('Posted Transactions Date') || 
-      k.includes('Description1')
-    );
-    
-    // Extract description
-    let description = '';
-    if (isAIB) {
-      // AIB: use only Description1, remove prefixes like VDP-, VDC-, D/D, etc.
-      const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-      let rawDescription = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
-      // Remove prefixes like VDP-, VDC-, D/D, etc. (everything up to and including the first hyphen)
-      if (rawDescription.includes('-')) {
-        const parts = rawDescription.split('-');
-        if (parts.length > 1) {
-          description = parts.slice(1).join('-').trim(); // Join in case there are multiple hyphens
-        } else {
-          description = rawDescription;
-        }
+// Normalize a raw transaction from any bank to unified format
+function normalizeTransaction(rawTx: RawTransaction): Transaction | null {
+  const keys = Object.keys(rawTx);
+  
+  // Detect bank format
+  const isAIB = keys.some(k => 
+    k.includes('Posted Account') || 
+    k.includes('Posted Transactions Date') || 
+    k.includes('Description1')
+  );
+  
+  // Extract description
+  let description = '';
+  if (isAIB) {
+    // AIB: use only Description1, remove prefixes like VDP-, VDC-, D/D, etc.
+    const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
+    let rawDescription = desc1Key ? String(rawTx[desc1Key] || '').trim() : '';
+    // Remove prefixes like VDP-, VDC-, D/D, etc. (everything up to and including the first hyphen)
+    if (rawDescription.includes('-')) {
+      const parts = rawDescription.split('-');
+      if (parts.length > 1) {
+        description = parts.slice(1).join('-').trim();
       } else {
         description = rawDescription;
       }
     } else {
-      // Revolut: single Description field
-      description = transaction.Description || transaction.description || '';
+      description = rawDescription;
     }
+  } else {
+    // Revolut: single Description field
+    description = rawTx.Description || rawTx.description || '';
+  }
+  
+  if (!description.trim()) return null; // Skip transactions without description
+  
+  // Extract amount
+  let amount = 0;
+  if (isAIB) {
+    // AIB: use Debit Amount (negative) or Credit Amount (positive)
+    const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
+    const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
     
-    // Extract amount
-    let amount = 0;
-    if (isAIB) {
-      // AIB: use Debit Amount (negative) or Credit Amount (positive)
-      const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
-      const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
-      
-      const debitAmount = debitKey ? (transaction as any)[debitKey] : '';
-      const creditAmount = creditKey ? (transaction as any)[creditKey] : '';
-      
-      if (debitAmount && String(debitAmount).trim()) {
-        amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
-      } else if (creditAmount && String(creditAmount).trim()) {
-        amount = parseFloat(String(creditAmount).replace(/,/g, ''));
+    const debitAmount = debitKey ? rawTx[debitKey] : '';
+    const creditAmount = creditKey ? rawTx[creditKey] : '';
+    
+    if (debitAmount && String(debitAmount).trim()) {
+      amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
+    } else if (creditAmount && String(creditAmount).trim()) {
+      amount = parseFloat(String(creditAmount).replace(/,/g, ''));
+    }
+  } else {
+    // Revolut: single Amount field (already signed)
+    amount = parseFloat(rawTx.Amount || rawTx.amount || '0');
+  }
+  
+  // Extract transaction type
+  let type = '';
+  if (isAIB) {
+    const typeKey = keys.find(k => k.trim() === 'Transaction Type' || k.includes('Transaction Type'));
+    type = typeKey ? String(rawTx[typeKey] || '').toUpperCase() : '';
+  } else {
+    type = (rawTx.Type || rawTx.type || '').toUpperCase();
+  }
+  
+  // Extract date
+  let dateStr = '';
+  if (isAIB) {
+    // AIB: use Posted Transactions Date (DD/MM/YYYY format)
+    const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
+    if (dateKey) {
+      dateStr = String(rawTx[dateKey] || '').trim();
+      // Convert DD/MM/YYYY to ISO format for consistency
+      if (dateStr) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          const day = parts[0].padStart(2, '0');
+          const month = parts[1].padStart(2, '0');
+          const year = parts[2];
+          dateStr = `${year}-${month}-${day}`;
+        }
       }
-    } else {
-      // Revolut: single Amount field (already signed)
-      amount = parseFloat(transaction.Amount || transaction.amount || '0');
     }
-    
-    // Extract transaction type
-    let type = '';
-    if (isAIB) {
-      const typeKey = keys.find(k => k.trim() === 'Transaction Type' || k.includes('Transaction Type'));
-      type = typeKey ? String((transaction as any)[typeKey] || '').toUpperCase() : '';
-    } else {
-      type = (transaction.Type || transaction.type || '').toUpperCase();
+  } else {
+    // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
+    dateStr = (rawTx['Completed Date'] || rawTx['Started Date'] || rawTx.Date || rawTx.date || '').toString();
+    // Extract just the date part if it includes time
+    if (dateStr.includes(' ')) {
+      dateStr = dateStr.split(' ')[0];
     }
+  }
+  
+  // Extract currency
+  let currency = '';
+  if (isAIB) {
+    const currencyKey = keys.find(k => k.trim() === 'Posted Currency' || k.includes('Posted Currency'));
+    currency = currencyKey ? String(rawTx[currencyKey] || '').trim() : 'EUR';
+  } else {
+    currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
+  }
+  
+  // Extract balance (optional)
+  let balance: number | undefined;
+  const balanceKey = keys.find(k => k.trim() === 'Balance' || k.includes('Balance'));
+  if (balanceKey && rawTx[balanceKey]) {
+    balance = parseFloat(String(rawTx[balanceKey]).replace(/,/g, ''));
+  }
+  
+  return {
+    Description: description,
+    Amount: amount,
+    Type: type,
+    Date: dateStr,
+    Currency: currency || 'EUR',
+    Balance: balance,
+    BankSource: isAIB ? 'AIB' : 'Revolut',
+    OriginalData: rawTx
+  };
+}
+
+function analyzeBankStatement(data: Transaction[]): Subscription[] {
+  const transactionsByDescription: Record<string, any> = {};
+  data.forEach((transaction) => {
+    const description = transaction.Description;
+    const amount = transaction.Amount;
+    const type = transaction.Type;
     
     if (amount > 0) return; // Skip credits
     if (type === 'EXCHANGE' || type === 'TRANSFER') return;
@@ -192,40 +262,23 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
     if (Math.abs(amount) > Math.abs(transactionsByDescription[description].maxAmount)) {
       transactionsByDescription[description].maxAmount = amount;
     }
-    // Extract date
-    let date = '';
-    if (isAIB) {
-      const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
-      date = dateKey ? (transaction as any)[dateKey] || '' : '';
-    } else {
-      date = (transaction as any)['Completed Date'] ||
-      (transaction as any)['Started Date'] ||
-      transaction.Date ||
-             transaction.date || '';
-    }
+    
+    // Extract date (already normalized to ISO format)
+    const date = transaction.Date;
     if (date) {
-      // Parse date based on format
+      // Parse date (already normalized to ISO format YYYY-MM-DD)
       let transactionDate: Date;
       try {
-        if (isAIB && date.includes('/')) {
-          // AIB format: DD/MM/YYYY
-          const [day, month, year] = date.split('/');
-          transactionDate = new Date(`${year}-${month}-${day}`);
-        } else if (date.includes('-') && date.includes(' ')) {
-          // Revolut format: YYYY-MM-DD HH:MM:SS
-          transactionDate = new Date(date);
-        } else {
-          transactionDate = new Date(date);
-        }
+        transactionDate = new Date(date);
         
         // Only add if date is valid
         if (!isNaN(transactionDate.getTime())) {
-      transactionsByDescription[description].dates.push(transactionDate);
-      if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
-        transactionsByDescription[description].firstDate = transactionDate;
-      }
-      if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
-        transactionsByDescription[description].lastDate = transactionDate;
+          transactionsByDescription[description].dates.push(transactionDate);
+          if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
+            transactionsByDescription[description].firstDate = transactionDate;
+          }
+          if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
+            transactionsByDescription[description].lastDate = transactionDate;
           }
         }
       } catch (e) {
@@ -342,7 +395,7 @@ const App: React.FC = () => {
   const [csvData, setCsvData] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number }>>([]);
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
@@ -372,17 +425,22 @@ const App: React.FC = () => {
     trackPageView(activeTab);
   }, [activeTab]);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setSelectedFile(file);
+  // Process a single CSV file and merge with existing data
+  const processCSVFile = (file: File, mergeWithExisting: boolean = true) => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results: Papa.ParseResult<Transaction>) => {
-        const rowCount = (results.data as Transaction[]).length;
-        // Detect bank type
-        const firstRow = results.data[0] as Transaction;
+      complete: (results: Papa.ParseResult<RawTransaction>) => {
+        const rawData = results.data as RawTransaction[];
+        const rowCount = rawData.length;
+        
+        // Normalize all transactions
+        const normalizedTransactions = rawData
+          .map(rawTx => normalizeTransaction(rawTx))
+          .filter((tx): tx is Transaction => tx !== null);
+        
+        // Detect bank type from first row
+        const firstRow = rawData[0];
         const keys = firstRow ? Object.keys(firstRow) : [];
         const isAIB = keys.some(k => 
           k.includes('Posted Account') || 
@@ -391,13 +449,51 @@ const App: React.FC = () => {
         );
         const bankType = isAIB ? 'AIB' : 'Revolut';
         
-        setCsvData(results.data as Transaction[]);
-        setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
+        // Merge with existing data or replace
+        setCsvData(prevData => {
+          const mergedData = mergeWithExisting 
+            ? [...prevData, ...normalizedTransactions]
+            : normalizedTransactions;
+          
+          // Sort by date (newest first)
+          mergedData.sort((a, b) => {
+            const dateA = new Date(a.Date).getTime();
+            const dateB = new Date(b.Date).getTime();
+            return dateB - dateA;
+          });
+          
+          // Re-analyze subscriptions with merged data
+          setSubscriptions(analyzeBankStatement(mergedData));
+          
+          return mergedData;
+        });
+        
+        // Update uploaded files list
+        setUploadedFiles(prevFiles => {
+          const newFile = { file, bankType, rowCount };
+          return mergeWithExisting ? [...prevFiles, newFile] : [newFile];
+        });
+        
         incrementStat('files_uploaded');
         incrementStat('rows_analyzed', rowCount);
         trackCSVUpload(rowCount, bankType);
       },
     });
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    
+    // Process all selected files
+    Array.from(files).forEach((file, index) => {
+      processCSVFile(file, index > 0); // Merge all files after the first one
+    });
+    
+    // Reset input to allow selecting the same files again
+    if (inputRef.current) {
+      inputRef.current.value = '';
+    }
   };
 
   const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
@@ -414,31 +510,13 @@ const App: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setSelectedFile(e.dataTransfer.files[0]);
-      Papa.parse(e.dataTransfer.files[0], {
-        header: true,
-        skipEmptyLines: true,
-        complete: (results: Papa.ParseResult<Transaction>) => {
-          const rowCount = (results.data as Transaction[]).length;
-          // Detect bank type
-          const firstRow = results.data[0] as Transaction;
-          const keys = firstRow ? Object.keys(firstRow) : [];
-          const isAIB = keys.some(k => 
-            k.includes('Posted Account') || 
-            k.includes('Posted Transactions Date') || 
-            k.includes('Description1')
-          );
-          const bankType = isAIB ? 'AIB' : 'Revolut';
-          
-          setCsvData(results.data as Transaction[]);
-          setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
-          incrementStat('files_uploaded');
-          incrementStat('rows_analyzed', rowCount);
-          trackCSVUpload(rowCount, bankType);
-        },
-      });
-    }
+    const files = e.dataTransfer.files;
+    if (!files || files.length === 0) return;
+    
+    // Process all dropped files
+    Array.from(files).forEach((file, index) => {
+      processCSVFile(file, index > 0 || csvData.length > 0); // Merge if there's existing data or multiple files
+    });
   };
 
   const handleClick = () => {
@@ -463,8 +541,7 @@ const App: React.FC = () => {
 
   const totalOutgoing = useMemo(() => {
     return csvData.reduce((sum, tx) => {
-      const amount = parseFloat(tx.Amount || tx.amount || '0');
-      return amount < 0 ? sum + Math.abs(amount) : sum;
+      return tx.Amount < 0 ? sum + Math.abs(tx.Amount) : sum;
     }, 0);
   }, [csvData]);
 
@@ -497,13 +574,11 @@ const App: React.FC = () => {
     const dayTotals: number[] = Array(31).fill(0);
     const dayCounts: number[] = Array(31).fill(0);
     csvData.forEach((tx) => {
-      const amount = parseFloat(tx.Amount || tx.amount || '0');
-      if (amount >= 0) return;
-      const dateStr = ((tx as any)['Completed Date'] || (tx as any)['Started Date'] || tx.Date || tx.date || '').toString();
-      const date = new Date(dateStr);
+      if (tx.Amount >= 0) return;
+      const date = new Date(tx.Date);
       if (!isNaN(date.getTime())) {
         const day = date.getDate();
-        dayTotals[day - 1] += Math.abs(amount);
+        dayTotals[day - 1] += Math.abs(tx.Amount);
         dayCounts[day - 1] += 1;
       }
     });
@@ -521,15 +596,12 @@ const App: React.FC = () => {
   const subscriptionRawData = useMemo(() => {
     const map: Record<string, { dates: Date[]; amounts: number[] }> = {};
     csvData.forEach((tx) => {
-      const description = tx.Description || tx.description || '';
-      const amount = parseFloat(tx.Amount || tx.amount || '0');
-      if (amount >= 0) return;
-      const dateStr = ((tx as any)['Completed Date'] || (tx as any)['Started Date'] || tx.Date || tx.date || '').toString();
-      const date = new Date(dateStr);
+      if (tx.Amount >= 0) return;
+      const date = new Date(tx.Date);
       if (!isNaN(date.getTime())) {
-        if (!map[description]) map[description] = { dates: [], amounts: [] };
-        map[description].dates.push(date);
-        map[description].amounts.push(amount);
+        if (!map[tx.Description]) map[tx.Description] = { dates: [], amounts: [] };
+        map[tx.Description].dates.push(date);
+        map[tx.Description].amounts.push(tx.Amount);
       }
     });
     return map;
@@ -1081,15 +1153,30 @@ const App: React.FC = () => {
                   <input
                     type="file"
                     accept=".csv"
+                    multiple
                     ref={inputRef}
                     style={{ display: 'none' }}
                     onChange={handleFileUpload}
                   />
                   <div className="upload-prompt">
-                    {selectedFile ? (
-                      <span><b>{selectedFile.name}</b> selected</span>
+                    {uploadedFiles.length > 0 ? (
+                      <div>
+                        <div style={{ marginBottom: '0.5rem' }}>
+                          <strong>{uploadedFiles.length} file{uploadedFiles.length > 1 ? 's' : ''} uploaded</strong>
+                        </div>
+                        <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>
+                          {uploadedFiles.map((fileInfo, idx) => (
+                            <div key={idx} style={{ marginTop: '0.3rem' }}>
+                              {fileInfo.file.name} ({fileInfo.bankType}, {fileInfo.rowCount} rows)
+                            </div>
+                          ))}
+                        </div>
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', opacity: 0.8 }}>
+                          You can upload more files to merge them
+                        </div>
+                      </div>
                     ) : (
-                      <span>Drag and drop your CSV here, or <span className="upload-link">click to upload</span></span>
+                      <span>Drag and drop your CSV file(s) here, or <span className="upload-link">click to upload</span></span>
                     )}
                   </div>
                 </div>
@@ -2002,7 +2089,7 @@ const App: React.FC = () => {
                               const startedKey = keys.find(k => k.trim() === 'Started Date' || k.includes('Started Date'));
                               date = completedKey ? (transaction as any)[completedKey] : 
                                      startedKey ? (transaction as any)[startedKey] : 
-                                     transaction.Date || transaction.date || '';
+                                     transaction.Date || '';
                             }
                             
                             // Extract balance
