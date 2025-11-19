@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+
+# Sitemap (update when you have a sitemap)
+# Sitemap: https://downsell.eu/sitemap.xml
+

@@ -1,0 +1,14 @@
+# Redirect common bot scan paths to 404
+/.git/*  /404.html  404
+/.env    /404.html  404
+/config/.env  /404.html  404
+/phpinfo.php  /404.html  404
+/info.php  /404.html  404
+/test.php  /404.html  404
+/_profiler/*  /404.html  404
+/test/*.php  /404.html  404
+/dev/*.php  /404.html  404
+
+# Fallback for SPA
+/*    /index.html   200
+
