@@ -487,9 +487,9 @@ const App: React.FC = () => {
   // Process a single CSV file and merge with existing data
   const processCSVFile = (file: File, mergeWithExisting: boolean = true, onComplete?: () => void): Promise<void> => {
     return new Promise((resolve) => {
-      Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
         complete: (results: Papa.ParseResult<RawTransaction>) => {
         const rawData = results.data as RawTransaction[];
         const rowCount = rawData.length;
@@ -618,9 +618,7 @@ const App: React.FC = () => {
     
     // Process files sequentially to avoid state conflicts
     for (let i = 0; i < fileArray.length; i++) {
-      await new Promise<void>((resolve) => {
-        processCSVFile(fileArray[i], i > 0 || csvData.length > 0, resolve);
-      });
+      await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
     }
   };
 
