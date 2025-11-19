@@ -307,6 +307,7 @@ const TAB_LABELS = [
   { label: 'Transactions', icon: '💳' },
   { label: 'Account (soon)', icon: '👤' },
   { label: 'About', icon: 'ℹ️' },
+  { label: 'Privacy Policy', icon: '🔒' },
 ];
 
 // Local storage key for statistics
@@ -2147,6 +2148,238 @@ const App: React.FC = () => {
                   >
                     Join the Waitlist
                   </button>
+                </div>
+              </div>
+            )}
+            {activeTab === 'Privacy Policy' && (
+              <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 0' }}>
+                <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '2rem', color: 'white' }}>
+                  Privacy Policy
+                </h1>
+                <p style={{ fontSize: '0.95rem', color: '#888', marginBottom: '3rem' }}>
+                  Last Updated: {new Date().toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}
+                </p>
+
+                <div style={{ fontSize: '1.05rem', lineHeight: '1.8', color: '#bfc9da' }}>
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      1. Data Controller
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      The data controller for Downsell is <strong style={{ color: 'white' }}>Broc.fi</strong> (referred to as "we", "us", or "our").
+                    </p>
+                    <p>
+                      <strong style={{ color: 'white' }}>Contact Information:</strong><br />
+                      Email: ruairi@broc.fi<br />
+                      Website: <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a>
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      2. Purpose of Data Processing
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      Downsell is a free, client-side financial analysis tool designed to help you understand your spending patterns and identify recurring subscriptions. When you upload a CSV file containing your bank statement data, we process it to:
+                    </p>
+                    <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
+                      <li>Identify recurring transactions and potential subscriptions</li>
+                      <li>Analyze spending patterns over time</li>
+                      <li>Generate visualizations and reports of your financial data</li>
+                      <li>Provide insights to help you make informed decisions about your finances</li>
+                    </ul>
+                    <p>
+                      <strong style={{ color: 'white' }}>Important:</strong> All data processing occurs entirely within your web browser. Your financial data never leaves your device and is not transmitted to our servers.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      3. Legal Basis for Processing
+                    </h2>
+                    <p>
+                      Under the General Data Protection Regulation (GDPR), we process your data based on <strong style={{ color: 'white' }}>legitimate interests</strong> (Article 6(1)(f) GDPR). Our legitimate interest is to provide a free, public utility that helps individuals better understand their financial spending patterns. We also process data based on your <strong style={{ color: 'white' }}>consent</strong> when you choose to upload and analyze your CSV file.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      4. Data Storage and Processing
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Client-Side Processing Only:</strong>
+                    </p>
+                    <ul style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
+                      <li>Your CSV file and all transaction data are processed entirely within your web browser</li>
+                      <li>No financial data is stored on our servers</li>
+                      <li>No financial data is transmitted to our servers or any third-party services</li>
+                      <li>Your data remains on your device and is cleared when you close your browser (unless you choose to keep it in browser storage)</li>
+                    </ul>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Local Storage (Statistics Only):</strong>
+                    </p>
+                    <p style={{ marginBottom: '1rem' }}>
+                      We use your browser's local storage to maintain anonymous usage statistics, including:
+                    </p>
+                    <ul style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
+                      <li>Number of CSV files uploaded (aggregate count only)</li>
+                      <li>Number of transactions analyzed (aggregate count only)</li>
+                      <li>Number of PDF reports generated (aggregate count only)</li>
+                    </ul>
+                    <p>
+                      <strong style={{ color: 'white' }}>No personal or financial data is stored.</strong> These statistics are anonymous and cannot be used to identify you or your financial information.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      5. Automated Processing
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      Downsell uses automated algorithms to:
+                    </p>
+                    <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
+                      <li>Parse and analyze CSV files</li>
+                      <li>Identify recurring transactions based on amount, frequency, and description patterns</li>
+                      <li>Calculate spending statistics and trends</li>
+                      <li>Generate visualizations and reports</li>
+                    </ul>
+                    <p>
+                      All automated processing occurs client-side in your browser. We do not use artificial intelligence or machine learning models that process your data on external servers.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      6. Data Retention
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Financial Data:</strong> Your CSV data and transaction information are not retained by us. They exist only in your browser's memory during your session and are cleared when you close your browser tab or refresh the page.
+                    </p>
+                    <p>
+                      <strong style={{ color: 'white' }}>Usage Statistics:</strong> Anonymous usage statistics stored in your browser's local storage are retained indefinitely unless you clear your browser's local storage. You can clear this data at any time through your browser settings.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      7. Your Rights Under GDPR
+                    </h2>
+                    <p style={{ marginBottom: '1.5rem' }}>
+                      As a data subject under GDPR, you have the following rights:
+                    </p>
+                    <ul style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
+                      <li><strong style={{ color: 'white' }}>Right of Access (Article 15):</strong> You can request information about what data we process. Since we don't store your financial data, there is no personal data to access.</li>
+                      <li><strong style={{ color: 'white' }}>Right to Rectification (Article 16):</strong> Not applicable, as we don't store your financial data.</li>
+                      <li><strong style={{ color: 'white' }}>Right to Erasure (Article 17):</strong> You can request deletion of any stored data. To delete anonymous usage statistics, clear your browser's local storage.</li>
+                      <li><strong style={{ color: 'white' }}>Right to Restrict Processing (Article 18):</strong> You can stop using the service at any time by closing your browser.</li>
+                      <li><strong style={{ color: 'white' }}>Right to Data Portability (Article 20):</strong> Not applicable, as we don't store your financial data.</li>
+                      <li><strong style={{ color: 'white' }}>Right to Object (Article 21):</strong> You can object to processing by not using the service.</li>
+                      <li><strong style={{ color: 'white' }}>Right to Withdraw Consent (Article 7):</strong> You can withdraw consent at any time by closing your browser and clearing local storage.</li>
+                    </ul>
+                    <p>
+                      <strong style={{ color: 'white' }}>How to Exercise Your Rights:</strong> To request deletion of usage statistics or exercise any other rights, please contact us at <a href="mailto:ruairi@broc.fi" style={{ color: '#2d8cff', textDecoration: 'none' }}>ruairi@broc.fi</a>. You can also clear your browser's local storage directly through your browser settings.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      8. Third-Party Processors
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Hosting Provider:</strong>
+                    </p>
+                    <p style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
+                      Our application is hosted by <strong style={{ color: 'white' }}>Netlify</strong> (Netlify, Inc., 44 Montgomery Street, Suite 750, San Francisco, CA 94104, USA). Netlify may process technical data (IP addresses, request logs) necessary for hosting the application. Netlify is GDPR-compliant and processes data in accordance with their privacy policy: <a href="https://www.netlify.com/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://www.netlify.com/privacy/</a>
+                    </p>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>No Data Sharing:</strong>
+                    </p>
+                    <p>
+                      We do not share, sell, or transfer your financial data to any third parties. Your CSV data and transaction information never leave your browser and are not accessible to Netlify or any other third-party service.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      9. Cookies and Tracking
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Local Storage:</strong> We use your browser's local storage (not cookies) to store anonymous usage statistics. This data is stored locally on your device and is not transmitted to our servers.
+                    </p>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>No Tracking Cookies:</strong> We do not use tracking cookies, analytics cookies, or any other tracking technologies that monitor your behavior across websites.
+                    </p>
+                    <p>
+                      <strong style={{ color: 'white' }}>No Third-Party Analytics:</strong> We do not use Google Analytics, Facebook Pixel, or any other third-party analytics services.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      10. Data Security
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      Since all data processing occurs client-side in your browser, your financial data is protected by:
+                    </p>
+                    <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
+                      <li>Your browser's built-in security features</li>
+                      <li>The fact that data never leaves your device</li>
+                      <li>No server-side storage means no risk of data breaches on our servers</li>
+                    </ul>
+                    <p>
+                      We recommend using a secure, up-to-date web browser and clearing your browser data after each session if you're using a shared or public computer.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      11. International Data Transfers
+                    </h2>
+                    <p>
+                      Since your financial data is processed entirely within your browser and never transmitted to our servers, there are no international data transfers of your financial information. Our hosting provider (Netlify) may process technical data (IP addresses) in the United States, but this does not include any of your financial or transaction data.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      12. Children's Privacy
+                    </h2>
+                    <p>
+                      Downsell is not intended for use by individuals under the age of 18. We do not knowingly collect or process data from children. If you are a parent or guardian and believe your child has provided us with data, please contact us at <a href="mailto:ruairi@broc.fi" style={{ color: '#2d8cff', textDecoration: 'none' }}>ruairi@broc.fi</a>.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      13. Changes to This Privacy Policy
+                    </h2>
+                    <p>
+                      We may update this Privacy Policy from time to time. We will notify you of any material changes by updating the "Last Updated" date at the top of this policy. We encourage you to review this Privacy Policy periodically to stay informed about how we protect your privacy.
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      14. Supervisory Authority
+                    </h2>
+                    <p>
+                      If you are located in the European Economic Area (EEA) and believe we have not addressed your privacy concerns, you have the right to lodge a complaint with your local data protection supervisory authority. For Ireland, this is the Data Protection Commission (<a href="https://www.dataprotection.ie" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>www.dataprotection.ie</a>).
+                    </p>
+                  </section>
+
+                  <section style={{ marginBottom: '3rem', padding: '2rem', background: 'rgba(45, 140, 255, 0.1)', borderRadius: '12px', border: '1px solid rgba(45, 140, 255, 0.3)' }}>
+                    <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                      15. Contact Us
+                    </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      If you have any questions, concerns, or requests regarding this Privacy Policy or our data practices, please contact us:
+                    </p>
+                    <p>
+                      <strong style={{ color: 'white' }}>Email:</strong> <a href="mailto:ruairi@broc.fi" style={{ color: '#2d8cff', textDecoration: 'none' }}>ruairi@broc.fi</a><br />
+                      <strong style={{ color: 'white' }}>Website:</strong> <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a>
+                    </p>
+                  </section>
                 </div>
               </div>
             )}
