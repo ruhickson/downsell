@@ -3,32 +3,38 @@
     "date": {
       "revolut": "Completed Date",
       "aib": "Posted Transactions Date",
-      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB uses date format (DD/MM/YYYY). Use Completed Date for Revolut, Posted Transactions Date for AIB."
+      "boi": "Date",
+      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB and BOI use date format (DD/MM/YYYY). Use Completed Date for Revolut, Posted Transactions Date for AIB, Date for BOI."
     },
     "description": {
       "revolut": "Description",
       "aib": ["Description1", "Description2", "Description3"],
-      "notes": "For AIB, concatenate Description1 + Description2 + Description3 (with spaces) to get full description. Description2 and Description3 may be empty."
+      "boi": "Details",
+      "notes": "For AIB, concatenate Description1 + Description2 + Description3 (with spaces) to get full description. Description2 and Description3 may be empty. For BOI, use Details field directly."
     },
     "amount": {
       "revolut": "Amount",
       "aib": ["Debit Amount", "Credit Amount"],
-      "notes": "Revolut uses single Amount field (negative for debits, positive for credits). AIB uses separate Debit Amount and Credit Amount fields (one will be empty). For AIB: if Debit Amount exists, use negative value; if Credit Amount exists, use positive value. Remove commas from AIB amounts."
+      "boi": ["Debit", "Credit"],
+      "notes": "Revolut uses single Amount field (negative for debits, positive for credits). AIB and BOI use separate Debit and Credit fields (one will be empty). For AIB/BOI: if Debit exists, use negative value; if Credit exists, use positive value. Remove commas from amounts."
     },
     "currency": {
       "revolut": "Currency",
       "aib": "Posted Currency",
-      "notes": "Both use currency codes like 'EUR'. AIB also has 'Local Currency' field which is typically the same."
+      "boi": "EUR",
+      "notes": "Revolut and AIB have explicit currency fields. BOI typically uses EUR (default)."
     },
     "balance": {
       "revolut": "Balance",
       "aib": "Balance",
-      "notes": "Both represent account balance after transaction. May be negative."
+      "boi": "Balance",
+      "notes": "All represent account balance after transaction. May be negative or empty (BOI may have empty balance for some rows)."
     },
     "transaction_type": {
       "revolut": "Type",
       "aib": "Transaction Type",
-      "notes": "Revolut uses values like 'CARD_PAYMENT', 'EXCHANGE', 'TRANSFER'. AIB uses values like 'Debit', 'Credit', 'Direct Debit'."
+      "boi": null,
+      "notes": "Revolut uses values like 'CARD_PAYMENT', 'EXCHANGE', 'TRANSFER'. AIB uses values like 'Debit', 'Credit', 'Direct Debit'. BOI does not have an explicit transaction type field - infer from Debit/Credit fields."
     }
   },
   "detection_rules": {
@@ -49,6 +55,15 @@
         "Description1"
       ],
       "file_pattern": "Transaction_Export_*.csv"
+    },
+    "boi": {
+      "required_columns": ["Date", "Details", "Debit", "Credit", "Balance"],
+      "unique_identifiers": [
+        "Date",
+        "Details"
+      ],
+      "file_pattern": "*.csv",
+      "detection_notes": "BOI has the simplest format. Check for Date, Details, Debit, Credit, Balance columns. If file doesn't match Revolut or AIB patterns, and has these 5 columns, it's likely BOI."
     }
   },
   "processing_notes": {
@@ -61,8 +76,14 @@
     "aib": {
       "date_parsing": "Parse as DD/MM/YYYY format. Convert to standard date format.",
       "amount_parsing": "If Debit Amount exists and is not empty, use negative value (remove commas first). If Credit Amount exists and is not empty, use positive value (remove commas first). One will always be empty.",
-      "description_parsing": "Concatenate Description1 + (space if Description2 exists) + Description2 + (space if Description3 exists) + Description3. Trim result.",
+      "description_parsing": "Use only Description1 field (remove prefixes like VDP-, VDC-, D/D, etc. - everything up to and including the first hyphen).",
       "filtering": "Filter out transactions where Transaction Type indicates transfers or exchanges if needed."
+    },
+    "boi": {
+      "date_parsing": "Parse as DD/MM/YYYY format. Convert to standard date format (YYYY-MM-DD).",
+      "amount_parsing": "If Debit exists and is not empty, use negative value. If Credit exists and is not empty, use positive value. One will always be empty.",
+      "description_parsing": "Use Details field directly. Trim whitespace.",
+      "filtering": "No explicit transaction type field. Filter based on description patterns if needed (e.g., 'SEPA DD' for direct debits, 'FEE:' for fees)."
     }
   }
 }

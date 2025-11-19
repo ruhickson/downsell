@@ -1,0 +1,53 @@
+{
+  "bank": "Bank of Ireland",
+  "file_pattern": "*.csv",
+  "columns": [
+    {
+      "name": "Date",
+      "type": "date",
+      "format": "DD/MM/YYYY",
+      "description": "Transaction date",
+      "required": true,
+      "examples": ["07/07/2023", "06/07/2023", "30/06/2023"]
+    },
+    {
+      "name": "Details",
+      "type": "string",
+      "description": "Transaction description/merchant name",
+      "required": true,
+      "examples": ["ATM03JUL CO.BLAH", "COMPANY1      SEPA DD", "FEE: MAINTAINING ACC", "EMPLOYERNAME SP", "POS23JUN MERCHANT1"]
+    },
+    {
+      "name": "Debit",
+      "type": "decimal",
+      "description": "Debit amount (outgoing). Empty for credit transactions.",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["100.00", "50.00", "6.00", ""]
+    },
+    {
+      "name": "Credit",
+      "type": "decimal",
+      "description": "Credit amount (incoming). Empty for debit transactions.",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "1000.00"]
+    },
+    {
+      "name": "Balance",
+      "type": "decimal",
+      "description": "Account balance after transaction (may be empty for some rows)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["1234.56", "1384.56", "1390.56", "400.56", ""]
+    }
+  ],
+  "notes": [
+    "Debit and Credit are mutually exclusive - one will be empty",
+    "Date format is DD/MM/YYYY (European format)",
+    "Balance may be empty for some transactions",
+    "Details field contains transaction description/merchant name",
+    "Simpler format than AIB - only 5 columns"
+  ]
+}
+

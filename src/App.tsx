@@ -122,11 +122,21 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
 function normalizeTransaction(rawTx: RawTransaction, account: string): Transaction | null {
   const keys = Object.keys(rawTx);
   
-  // Detect bank format
-  const isAIB = keys.some(k => 
+  // Detect bank format (check in order: Revolut, AIB, BOI)
+  const isRevolut = keys.some(k => 
+    k.includes('Type') && 
+    (k.includes('Started Date') || k.includes('Completed Date'))
+  );
+  const isAIB = !isRevolut && keys.some(k => 
     k.includes('Posted Account') || 
     k.includes('Posted Transactions Date') || 
     k.includes('Description1')
+  );
+  const isBOI = !isRevolut && !isAIB && keys.some(k => 
+    k.trim() === 'Date' && 
+    keys.some(k2 => k2.trim() === 'Details') &&
+    keys.some(k3 => k3.trim() === 'Debit') &&
+    keys.some(k4 => k4.trim() === 'Credit')
   );
   
   // Extract description
@@ -146,6 +156,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     } else {
       description = rawDescription;
     }
+  } else if (isBOI) {
+    // BOI: use Details field directly
+    const detailsKey = keys.find(k => k.trim() === 'Details' || k.includes('Details'));
+    description = detailsKey ? String(rawTx[detailsKey] || '').trim() : '';
   } else {
     // Revolut: single Description field
     description = rawTx.Description || rawTx.description || '';
@@ -168,6 +182,19 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     } else if (creditAmount && String(creditAmount).trim()) {
       amount = parseFloat(String(creditAmount).replace(/,/g, ''));
     }
+  } else if (isBOI) {
+    // BOI: use Debit (negative) or Credit (positive)
+    const debitKey = keys.find(k => k.trim() === 'Debit' || k.includes('Debit'));
+    const creditKey = keys.find(k => k.trim() === 'Credit' || k.includes('Credit'));
+    
+    const debitAmount = debitKey ? rawTx[debitKey] : '';
+    const creditAmount = creditKey ? rawTx[creditKey] : '';
+    
+    if (debitAmount && String(debitAmount).trim()) {
+      amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
+    } else if (creditAmount && String(creditAmount).trim()) {
+      amount = parseFloat(String(creditAmount).replace(/,/g, ''));
+    }
   } else {
     // Revolut: single Amount field (already signed)
     amount = parseFloat(rawTx.Amount || rawTx.amount || '0');
@@ -178,6 +205,15 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   if (isAIB) {
     const typeKey = keys.find(k => k.trim() === 'Transaction Type' || k.includes('Transaction Type'));
     type = typeKey ? String(rawTx[typeKey] || '').toUpperCase() : '';
+  } else if (isBOI) {
+    // BOI doesn't have explicit transaction type - infer from Debit/Credit
+    if (amount < 0) {
+      type = 'DEBIT';
+    } else if (amount > 0) {
+      type = 'CREDIT';
+    } else {
+      type = 'UNKNOWN';
+    }
   } else {
     type = (rawTx.Type || rawTx.type || '').toUpperCase();
   }
@@ -187,6 +223,22 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   if (isAIB) {
     // AIB: use Posted Transactions Date (DD/MM/YYYY format)
     const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
+    if (dateKey) {
+      dateStr = String(rawTx[dateKey] || '').trim();
+      // Convert DD/MM/YYYY to ISO format for consistency
+      if (dateStr) {
+        const parts = dateStr.split('/');
+        if (parts.length === 3) {
+          const day = parts[0].padStart(2, '0');
+          const month = parts[1].padStart(2, '0');
+          const year = parts[2];
+          dateStr = `${year}-${month}-${day}`;
+        }
+      }
+    }
+  } else if (isBOI) {
+    // BOI: use Date field (DD/MM/YYYY format)
+    const dateKey = keys.find(k => k.trim() === 'Date' || k.includes('Date'));
     if (dateKey) {
       dateStr = String(rawTx[dateKey] || '').trim();
       // Convert DD/MM/YYYY to ISO format for consistency
@@ -214,6 +266,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   if (isAIB) {
     const currencyKey = keys.find(k => k.trim() === 'Posted Currency' || k.includes('Posted Currency'));
     currency = currencyKey ? String(rawTx[currencyKey] || '').trim() : 'EUR';
+  } else if (isBOI) {
+    // BOI doesn't have explicit currency field - default to EUR
+    currency = 'EUR';
   } else {
     currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
   }
@@ -232,7 +287,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : 'Revolut',
+    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : 'Revolut'),
     Account: account,
     OriginalData: rawTx
   };
