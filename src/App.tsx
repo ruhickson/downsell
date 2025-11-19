@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import Papa from 'papaparse';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import {
@@ -16,6 +16,7 @@ import {
 } from 'chart.js';
 import './App.css';
 import jsPDF from 'jspdf';
+import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
 
 ChartJS.register(
   CategoryScale,
@@ -363,7 +364,13 @@ const App: React.FC = () => {
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
     setSidebarOpen(false);
+    trackTabNavigation(tab);
   };
+
+  // Track page views when tab changes
+  useEffect(() => {
+    trackPageView(activeTab);
+  }, [activeTab]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -373,10 +380,22 @@ const App: React.FC = () => {
       header: true,
       skipEmptyLines: true,
       complete: (results: Papa.ParseResult<Transaction>) => {
+        const rowCount = (results.data as Transaction[]).length;
+        // Detect bank type
+        const firstRow = results.data[0] as Transaction;
+        const keys = firstRow ? Object.keys(firstRow) : [];
+        const isAIB = keys.some(k => 
+          k.includes('Posted Account') || 
+          k.includes('Posted Transactions Date') || 
+          k.includes('Description1')
+        );
+        const bankType = isAIB ? 'AIB' : 'Revolut';
+        
         setCsvData(results.data as Transaction[]);
         setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
         incrementStat('files_uploaded');
-        incrementStat('rows_analyzed', (results.data as Transaction[]).length);
+        incrementStat('rows_analyzed', rowCount);
+        trackCSVUpload(rowCount, bankType);
       },
     });
   };
@@ -401,10 +420,22 @@ const App: React.FC = () => {
         header: true,
         skipEmptyLines: true,
         complete: (results: Papa.ParseResult<Transaction>) => {
+          const rowCount = (results.data as Transaction[]).length;
+          // Detect bank type
+          const firstRow = results.data[0] as Transaction;
+          const keys = firstRow ? Object.keys(firstRow) : [];
+          const isAIB = keys.some(k => 
+            k.includes('Posted Account') || 
+            k.includes('Posted Transactions Date') || 
+            k.includes('Description1')
+          );
+          const bankType = isAIB ? 'AIB' : 'Revolut';
+          
           setCsvData(results.data as Transaction[]);
           setSubscriptions(analyzeBankStatement(results.data as Transaction[]));
           incrementStat('files_uploaded');
-          incrementStat('rows_analyzed', (results.data as Transaction[]).length);
+          incrementStat('rows_analyzed', rowCount);
+          trackCSVUpload(rowCount, bankType);
         },
       });
     }
@@ -646,6 +677,7 @@ const App: React.FC = () => {
   // Generate PDF report matching the Report tab
   const handleDownloadReport = async () => {
     incrementStat('reports_downloaded');
+    trackPDFDownload();
     
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     let y = 40;
@@ -946,7 +978,10 @@ const App: React.FC = () => {
             <div className="topbar-right">
               <button 
                 className="optimize-btn" 
-                onClick={() => window.open('https://broc.fi', '_blank')}
+                onClick={() => {
+                  trackButtonClick('Join Waitlist', { location: 'header' });
+                  window.open('https://broc.fi', '_blank');
+                }}
                 style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
               >
                 Join the Waitlist
@@ -1653,6 +1688,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="optimize-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block' }}
+                                        onClick={() => trackButtonClick('Switch Subscription', { subscription: sub.description })}
                                       >
                                         Switch
                                       </a>
@@ -1662,6 +1698,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="alt-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block', background: 'rgba(247, 37, 133, 0.2)', color: '#f72585', border: '1px solid #f72585' }}
+                                        onClick={() => trackButtonClick('Cancel Subscription', { subscription: sub.description })}
                                       >
                                         Cancel
                                       </a>
@@ -2144,7 +2181,10 @@ const App: React.FC = () => {
                   <button 
                     className="optimize-btn" 
                     style={{ marginTop: '1.5rem', padding: '1rem 2rem', fontSize: '1.1rem' }}
-                    onClick={() => window.open('https://broc.fi', '_blank')}
+                    onClick={() => {
+                      trackButtonClick('Join Waitlist', { location: 'about_page' });
+                      window.open('https://broc.fi', '_blank');
+                    }}
                   >
                     Join the Waitlist
                   </button>
