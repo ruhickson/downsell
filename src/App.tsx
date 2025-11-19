@@ -2024,63 +2024,20 @@ const App: React.FC = () => {
                         <tbody>
                     {(() => {
                       const filteredTransactions = csvData.filter((transaction) => {
-                        // Get all keys to help with field access
-                        const keys = Object.keys(transaction);
-                        
-                        // Detect bank format
-                        const isAIB = keys.some(k => 
-                          k.includes('Posted Account') || 
-                          k.includes('Posted Transactions Date') || 
-                          k.includes('Description1')
-                        );
-                        
-                        // Extract description
-                        let description = '';
-                        if (isAIB) {
-                          // AIB: use only Description1, remove prefixes like VDP-, VDC-, D/D, etc.
-                          const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-                          let rawDescription = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
-                          // Remove prefixes like VDP-, VDC-, D/D, etc. (everything up to and including the first hyphen)
-                          if (rawDescription.includes('-')) {
-                            const parts = rawDescription.split('-');
-                            if (parts.length > 1) {
-                              description = parts.slice(1).join('-').trim(); // Join in case there are multiple hyphens
-                            } else {
-                              description = rawDescription;
-                            }
-                          } else {
-                            description = rawDescription;
+                        // Apply account filter
+                        if (accountFilter !== 'All') {
+                          const allAccounts = accountsByDescription[transaction.Description] || [transaction.Account];
+                          if (!allAccounts.includes(accountFilter)) {
+                            return false;
                           }
-                        } else {
-                          const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
-                          description = descKey ? (transaction as any)[descKey] || '' : '';
-                        }
-                        
-                        // Extract amount
-                        let amount = 0;
-                        if (isAIB) {
-                          const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
-                          const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
-                          
-                          const debitAmount = debitKey ? (transaction as any)[debitKey] : '';
-                          const creditAmount = creditKey ? (transaction as any)[creditKey] : '';
-                          
-                          if (debitAmount && String(debitAmount).trim()) {
-                            amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
-                          } else if (creditAmount && String(creditAmount).trim()) {
-                            amount = parseFloat(String(creditAmount).replace(/,/g, ''));
-                          }
-                        } else {
-                          const amountKey = keys.find(k => k.trim() === 'Amount' || k.includes('Amount'));
-                          amount = amountKey ? parseFloat((transaction as any)[amountKey] || '0') : 0;
                         }
                         
                         // Check if subscription
                         const isSubscription = subscriptions.some(sub => 
-                          sub.description.toLowerCase() === description.toLowerCase()
+                          sub.description.toLowerCase() === transaction.Description.toLowerCase()
                         );
-                        const isCredit = amount > 0;
-                        const isDebit = amount < 0;
+                        const isCredit = transaction.Amount > 0;
+                        const isDebit = transaction.Amount < 0;
                         
                         // Apply type filter
                         if (transactionFilter === 'Credit' && !isCredit) return false;
@@ -2088,7 +2045,7 @@ const App: React.FC = () => {
                         if (transactionFilter === 'Subscription' && !isSubscription) return false;
                         
                         // Apply search filter
-                        if (transactionSearch && !description.toLowerCase().includes(transactionSearch.toLowerCase())) {
+                        if (transactionSearch && !transaction.Description.toLowerCase().includes(transactionSearch.toLowerCase())) {
                           return false;
                         }
                         
@@ -2096,7 +2053,7 @@ const App: React.FC = () => {
                         if (amountFilterType !== 'none' && amountFilterValue) {
                           const filterAmount = parseFloat(amountFilterValue);
                           if (!isNaN(filterAmount)) {
-                            const absAmount = Math.abs(amount);
+                            const absAmount = Math.abs(transaction.Amount);
                             if (amountFilterType === 'greater' && absAmount <= filterAmount) {
                               return false;
                             }
