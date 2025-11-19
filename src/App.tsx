@@ -607,17 +607,38 @@ const App: React.FC = () => {
     return { avg, cumulative };
   }, [csvData]);
 
-  // Map: description -> { dates: Date[], amounts: number[] }
+  // Map: description -> { dates: Date[], amounts: number[], accounts: string[] }
   const subscriptionRawData = useMemo(() => {
-    const map: Record<string, { dates: Date[]; amounts: number[] }> = {};
+    const map: Record<string, { dates: Date[]; amounts: number[]; accounts: Set<string> }> = {};
     csvData.forEach((tx) => {
       if (tx.Amount >= 0) return;
       const date = new Date(tx.Date);
       if (!isNaN(date.getTime())) {
-        if (!map[tx.Description]) map[tx.Description] = { dates: [], amounts: [] };
+        if (!map[tx.Description]) {
+          map[tx.Description] = { dates: [], amounts: [], accounts: new Set<string>() };
+        }
         map[tx.Description].dates.push(date);
         map[tx.Description].amounts.push(tx.Amount);
+        map[tx.Description].accounts.add(tx.Account);
       }
+    });
+    return map;
+  }, [csvData]);
+
+  // Map: description -> all accounts that have this expense
+  const accountsByDescription = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    csvData.forEach((tx) => {
+      if (!map[tx.Description]) {
+        map[tx.Description] = [];
+      }
+      if (!map[tx.Description].includes(tx.Account)) {
+        map[tx.Description].push(tx.Account);
+      }
+    });
+    // Sort accounts for consistent display
+    Object.keys(map).forEach(desc => {
+      map[desc].sort();
     });
     return map;
   }, [csvData]);
@@ -625,7 +646,7 @@ const App: React.FC = () => {
   // Identify high-confidence subscriptions (same price for 6 months straight)
   const highConfidenceSubscriptions = useMemo(() => {
     return subscriptions.filter((sub) => {
-    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [], accounts: [], banks: new Set<string>() };
+    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [], accounts: new Set<string>() };
       if (raw.amounts.length < 6) return false; // Need at least 6 payments
       
       // Sort by date
@@ -1519,11 +1540,11 @@ const App: React.FC = () => {
                           const dowLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                           return (
                             <div className="subscription-card" key={sub.description} style={{ position: 'relative' }}>
-                              {/* Bank name badge */}
+                              {/* Account badge */}
                               {(() => {
-                                const raw = subscriptionRawData[sub.description] || { banks: new Set<string>() };
-                                const banks = Array.from(raw.banks);
-                                return banks.length > 0 && (
+                                const raw = subscriptionRawData[sub.description] || { accounts: new Set<string>() };
+                                const accounts = Array.from(raw.accounts).sort();
+                                return accounts.length > 0 && (
                                   <div style={{
                                     position: 'absolute',
                                     top: '1rem',
@@ -1534,9 +1555,10 @@ const App: React.FC = () => {
                                     fontWeight: 600,
                                     background: 'rgba(139, 0, 139, 0.2)',
                                     color: '#8b008b',
-                                    border: '1px solid rgba(139, 0, 139, 0.4)'
+                                    border: '1px solid rgba(139, 0, 139, 0.4)',
+                                    fontFamily: 'monospace'
                                   }}>
-                                    {banks.join(', ')}
+                                    {accounts.join(', ')}
                                   </div>
                                 );
                               })()}
