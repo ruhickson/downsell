@@ -488,7 +488,7 @@ const App: React.FC = () => {
           
         incrementStat('files_uploaded');
           incrementStat('rows_analyzed', rowCount);
-          trackCSVUpload(rowCount, bankType);
+          trackCSVUpload(rowCount, bankType, 'file_processing');
           
           return newCounters;
         });
@@ -501,6 +501,7 @@ const App: React.FC = () => {
     if (!files || files.length === 0) return;
     
     trackButtonClick('CSV Upload', { method: 'file_input', file_count: files.length });
+    trackCSVUpload(0, 'unknown', 'file_input');
     
     // Process all selected files
     Array.from(files).forEach((file, index) => {
@@ -530,7 +531,8 @@ const App: React.FC = () => {
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
     
-    trackButtonClick('CSV Upload', { method: 'drag_drop', file_count: files.length });
+      trackButtonClick('CSV Upload', { method: 'drag_drop', file_count: files.length });
+      trackCSVUpload(0, 'unknown', 'drag_drop');
     
     // Process all dropped files
     Array.from(files).forEach((file, index) => {
