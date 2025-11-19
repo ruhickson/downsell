@@ -511,13 +511,12 @@ const App: React.FC = () => {
           k.includes('Description1')
         );
         
-        // Check for BOI
-        const isBOI = !isRevolut && !isAIB && keys.some(k => 
-          k.trim() === 'Date' && 
-          keys.some(k2 => k2.trim() === 'Details') &&
-          keys.some(k3 => k3.trim() === 'Debit') &&
-          keys.some(k4 => k4.trim() === 'Credit')
-        );
+        // Check for BOI (must have all: Date, Details, Debit, Credit)
+        const isBOI = !isRevolut && !isAIB && 
+          keys.some(k => k.trim() === 'Date') &&
+          keys.some(k => k.trim() === 'Details') &&
+          keys.some(k => k.trim() === 'Debit') &&
+          keys.some(k => k.trim() === 'Credit');
         
         const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : 'Revolut');
         
