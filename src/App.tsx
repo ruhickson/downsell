@@ -485,11 +485,12 @@ const App: React.FC = () => {
   }, [activeTab]);
 
   // Process a single CSV file and merge with existing data
-  const processCSVFile = (file: File, mergeWithExisting: boolean = true, onComplete?: () => void) => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: (results: Papa.ParseResult<RawTransaction>) => {
+  const processCSVFile = (file: File, mergeWithExisting: boolean = true, onComplete?: () => void): Promise<void> => {
+    return new Promise((resolve) => {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: (results: Papa.ParseResult<RawTransaction>) => {
         const rawData = results.data as RawTransaction[];
         const rowCount = rawData.length;
         
