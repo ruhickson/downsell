@@ -2046,7 +2046,7 @@ const App: React.FC = () => {
               <div className="tab-placeholder"><h2>Account</h2><p>Account management features coming soon.</p></div>
             )}
             {activeTab === 'About' && (
-              <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 0' }}>
+              <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 0', width: '100%' }}>
                 {/* Hero Section */}
                 <div style={{ textAlign: 'center', marginBottom: '4rem' }}>
                   <h1 style={{ fontSize: '3rem', fontWeight: 700, marginBottom: '1.5rem', background: 'linear-gradient(90deg, var(--brand-primary), var(--brand-accent))', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>
@@ -2152,7 +2152,7 @@ const App: React.FC = () => {
               </div>
             )}
             {activeTab === 'Privacy Policy' && (
-              <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 0' }}>
+              <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem 0', width: '100%' }}>
                 <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '2rem', color: 'white' }}>
                   Privacy Policy
                 </h1>
@@ -2206,6 +2206,92 @@ const App: React.FC = () => {
                     <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
                       4. Data Storage and Processing
                     </h2>
+                    
+                    {/* Privacy & Data Processing Diagram */}
+                    <div style={{ 
+                      marginBottom: '2rem', 
+                      padding: '2rem', 
+                      background: 'rgba(45, 140, 255, 0.1)', 
+                      borderRadius: '12px', 
+                      border: '1px solid rgba(45, 140, 255, 0.3)',
+                      textAlign: 'center'
+                    }}>
+                      <h3 style={{ fontSize: '1.3rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
+                        🔒 Your Data Never Leaves Your Device
+                      </h3>
+                      <div style={{ 
+                        display: 'flex', 
+                        flexWrap: 'wrap', 
+                        justifyContent: 'center', 
+                        alignItems: 'center', 
+                        gap: '1rem',
+                        marginBottom: '1rem'
+                      }}>
+                        <div style={{ 
+                          padding: '1.5rem', 
+                          background: 'rgba(255, 255, 255, 0.1)', 
+                          borderRadius: '8px',
+                          minWidth: '150px',
+                          flex: '1',
+                          maxWidth: '200px'
+                        }}>
+                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📤</div>
+                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>1. Upload CSV</div>
+                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>You upload your bank statement CSV file</div>
+                        </div>
+                        <div style={{ fontSize: '1.5rem', color: '#2d8cff' }}>→</div>
+                        <div style={{ 
+                          padding: '1.5rem', 
+                          background: 'rgba(255, 255, 255, 0.1)', 
+                          borderRadius: '8px',
+                          minWidth: '150px',
+                          flex: '1',
+                          maxWidth: '200px'
+                        }}>
+                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚙️</div>
+                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>2. Process in Memory</div>
+                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>File processed entirely in your browser's memory</div>
+                        </div>
+                        <div style={{ fontSize: '1.5rem', color: '#2d8cff' }}>→</div>
+                        <div style={{ 
+                          padding: '1.5rem', 
+                          background: 'rgba(255, 255, 255, 0.1)', 
+                          borderRadius: '8px',
+                          minWidth: '150px',
+                          flex: '1',
+                          maxWidth: '200px'
+                        }}>
+                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📊</div>
+                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>3. Generate Output</div>
+                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>Analysis, charts, and reports created</div>
+                        </div>
+                        <div style={{ fontSize: '1.5rem', color: '#2d8cff' }}>→</div>
+                        <div style={{ 
+                          padding: '1.5rem', 
+                          background: 'rgba(255, 255, 255, 0.1)', 
+                          borderRadius: '8px',
+                          minWidth: '150px',
+                          flex: '1',
+                          maxWidth: '200px'
+                        }}>
+                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🗑️</div>
+                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>4. Auto-Deleted</div>
+                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>File automatically cleared when you close the browser</div>
+                        </div>
+                      </div>
+                      <p style={{ 
+                        marginTop: '1.5rem', 
+                        fontSize: '1.1rem', 
+                        fontWeight: 600, 
+                        color: '#2d8cff',
+                        padding: '1rem',
+                        background: 'rgba(45, 140, 255, 0.15)',
+                        borderRadius: '8px'
+                      }}>
+                        ✅ No data is stored permanently. No data is sent to servers. Your privacy is protected.
+                      </p>
+                    </div>
+
                     <p style={{ marginBottom: '1rem' }}>
                       <strong style={{ color: 'white' }}>Client-Side Processing Only:</strong>
                     </p>
