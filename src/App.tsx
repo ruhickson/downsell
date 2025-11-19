@@ -500,6 +500,8 @@ const App: React.FC = () => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
+    trackButtonClick('CSV Upload', { method: 'file_input', file_count: files.length });
+    
     // Process all selected files
     Array.from(files).forEach((file, index) => {
       processCSVFile(file, index > 0); // Merge all files after the first one
@@ -1220,13 +1222,19 @@ const App: React.FC = () => {
                   <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', justifyContent: 'center' }}>
                     <button 
                       className="optimize-btn" 
-                      onClick={() => handleSidebarTabClick('Report')}
+                      onClick={() => {
+                        trackButtonClick('Report Button', { location: 'analysis_page' });
+                        handleSidebarTabClick('Report');
+                      }}
                       style={{ padding: '1rem 2rem', fontSize: '1.1rem', flex: '1', maxWidth: '300px' }}
                     >
                       Report
                     </button>
                     <button 
-                      onClick={() => handleSidebarTabClick('Actions')}
+                      onClick={() => {
+                        trackButtonClick('Actions Button', { location: 'analysis_page' });
+                        handleSidebarTabClick('Actions');
+                      }}
                       style={{ 
                         padding: '1rem 2rem', 
                         fontSize: '1.1rem', 
@@ -1636,10 +1644,19 @@ const App: React.FC = () => {
                                   </div>
                                 )}
                                 <div className="subscription-actions">
-                                  <button className="optimize-btn" disabled>
+                                  <button 
+                                    className="optimize-btn" 
+                                    disabled
+                                    onClick={() => trackButtonClick('Optimise Button', { subscription: sub.description, status: 'disabled' })}
+                                  >
                                     Optimise (soon)
                                   </button>
-                                  <button className="alt-btn">Find Alternative (coming soon)</button>
+                                  <button 
+                                    className="alt-btn"
+                                    onClick={() => trackButtonClick('Find Alternative Button', { subscription: sub.description, status: 'coming_soon' })}
+                                  >
+                                    Find Alternative (coming soon)
+                                  </button>
                                 </div>
                                     </div>
                                   </div>
