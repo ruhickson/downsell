@@ -485,7 +485,7 @@ const App: React.FC = () => {
   }, [activeTab]);
 
   // Process a single CSV file and merge with existing data
-  const processCSVFile = (file: File, mergeWithExisting: boolean = true) => {
+  const processCSVFile = (file: File, mergeWithExisting: boolean = true, onComplete?: () => void) => {
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
@@ -551,17 +551,24 @@ const App: React.FC = () => {
     });
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
-    trackButtonClick('CSV Upload', { method: 'file_input', file_count: files.length });
-    trackCSVUpload(0, 'unknown', 'file_input');
+    // Limit to 5 files
+    const fileArray = Array.from(files).slice(0, 5);
+    if (files.length > 5) {
+      alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
+    }
     
-    // Process all selected files
-    Array.from(files).forEach((file, index) => {
-      processCSVFile(file, index > 0); // Merge all files after the first one
-    });
+    trackButtonClick('CSV Upload', { method: 'file_input', file_count: fileArray.length });
+    
+    // Process files sequentially to avoid state conflicts
+    for (let i = 0; i < fileArray.length; i++) {
+      await new Promise<void>((resolve) => {
+        processCSVFile(fileArray[i], i > 0 || csvData.length > 0, resolve);
+      });
+    }
     
     // Reset input to allow selecting the same files again
     if (inputRef.current) {
@@ -579,20 +586,27 @@ const App: React.FC = () => {
     }
   };
 
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
     
-      trackButtonClick('CSV Upload', { method: 'drag_drop', file_count: files.length });
-      trackCSVUpload(0, 'unknown', 'drag_drop');
+    // Limit to 5 files
+    const fileArray = Array.from(files).slice(0, 5);
+    if (files.length > 5) {
+      alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
+    }
     
-    // Process all dropped files
-    Array.from(files).forEach((file, index) => {
-      processCSVFile(file, index > 0 || csvData.length > 0); // Merge if there's existing data or multiple files
-    });
+    trackButtonClick('CSV Upload', { method: 'drag_drop', file_count: fileArray.length });
+    
+    // Process files sequentially to avoid state conflicts
+    for (let i = 0; i < fileArray.length; i++) {
+      await new Promise<void>((resolve) => {
+        processCSVFile(fileArray[i], i > 0 || csvData.length > 0, resolve);
+      });
+    }
   };
 
   const handleClick = () => {
