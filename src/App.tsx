@@ -45,6 +45,7 @@ type Transaction = {
   Currency: string;
   Balance?: number;
   BankSource: string; // 'AIB' or 'Revolut'
+  Account: string; // 'AIB-1', 'REV-1', 'REV-2', etc.
   OriginalData: RawTransaction; // Keep original for reference
 };
 
@@ -118,7 +119,7 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
 }
 
 // Normalize a raw transaction from any bank to unified format
-function normalizeTransaction(rawTx: RawTransaction): Transaction | null {
+function normalizeTransaction(rawTx: RawTransaction, account: string): Transaction | null {
   const keys = Object.keys(rawTx);
   
   // Detect bank format
@@ -232,6 +233,7 @@ function normalizeTransaction(rawTx: RawTransaction): Transaction | null {
     Currency: currency || 'EUR',
     Balance: balance,
     BankSource: isAIB ? 'AIB' : 'Revolut',
+    Account: account,
     OriginalData: rawTx
   };
 }
@@ -273,12 +275,12 @@ function analyzeBankStatement(data: Transaction[]): Subscription[] {
         
         // Only add if date is valid
         if (!isNaN(transactionDate.getTime())) {
-          transactionsByDescription[description].dates.push(transactionDate);
-          if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
-            transactionsByDescription[description].firstDate = transactionDate;
-          }
-          if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
-            transactionsByDescription[description].lastDate = transactionDate;
+      transactionsByDescription[description].dates.push(transactionDate);
+      if (!transactionsByDescription[description].firstDate || transactionDate < transactionsByDescription[description].firstDate) {
+        transactionsByDescription[description].firstDate = transactionDate;
+      }
+      if (!transactionsByDescription[description].lastDate || transactionDate > transactionsByDescription[description].lastDate) {
+        transactionsByDescription[description].lastDate = transactionDate;
           }
         }
       } catch (e) {
@@ -395,11 +397,13 @@ const App: React.FC = () => {
   const [csvData, setCsvData] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
+  const [accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number }>({ AIB: 0, Revolut: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
   const [transactionSearch, setTransactionSearch] = useState<string>('');
+  const [accountFilter, setAccountFilter] = useState<string>('All');
   const [amountFilterType, setAmountFilterType] = useState<string>('none');
   const [amountFilterValue, setAmountFilterValue] = useState<string>('');
   const frequencyOptions = [
@@ -434,11 +438,6 @@ const App: React.FC = () => {
         const rawData = results.data as RawTransaction[];
         const rowCount = rawData.length;
         
-        // Normalize all transactions
-        const normalizedTransactions = rawData
-          .map(rawTx => normalizeTransaction(rawTx))
-          .filter((tx): tx is Transaction => tx !== null);
-        
         // Detect bank type from first row
         const firstRow = rawData[0];
         const keys = firstRow ? Object.keys(firstRow) : [];
@@ -449,34 +448,50 @@ const App: React.FC = () => {
         );
         const bankType = isAIB ? 'AIB' : 'Revolut';
         
-        // Merge with existing data or replace
-        setCsvData(prevData => {
-          const mergedData = mergeWithExisting 
-            ? [...prevData, ...normalizedTransactions]
-            : normalizedTransactions;
+        // Get or create account identifier
+        setAccountCounters(prevCounters => {
+          const newCounters = { ...prevCounters };
+          newCounters[bankType] = (newCounters[bankType] || 0) + 1;
+          const account = bankType === 'AIB' 
+            ? `AIB-${newCounters[bankType]}` 
+            : `REV-${newCounters[bankType]}`;
           
-          // Sort by date (newest first)
-          mergedData.sort((a, b) => {
-            const dateA = new Date(a.Date).getTime();
-            const dateB = new Date(b.Date).getTime();
-            return dateB - dateA;
+          // Normalize all transactions with account identifier
+          const normalizedTransactions = rawData
+            .map(rawTx => normalizeTransaction(rawTx, account))
+            .filter((tx): tx is Transaction => tx !== null);
+          
+          // Merge with existing data or replace
+          setCsvData(prevData => {
+            const mergedData = mergeWithExisting 
+              ? [...prevData, ...normalizedTransactions]
+              : normalizedTransactions;
+            
+            // Sort by date (newest first)
+            mergedData.sort((a, b) => {
+              const dateA = new Date(a.Date).getTime();
+              const dateB = new Date(b.Date).getTime();
+              return dateB - dateA;
+            });
+            
+            // Re-analyze subscriptions with merged data
+            setSubscriptions(analyzeBankStatement(mergedData));
+            
+            return mergedData;
           });
           
-          // Re-analyze subscriptions with merged data
-          setSubscriptions(analyzeBankStatement(mergedData));
+          // Update uploaded files list
+          setUploadedFiles(prevFiles => {
+            const newFile = { file, bankType, rowCount, account };
+            return mergeWithExisting ? [...prevFiles, newFile] : [newFile];
+          });
           
-          return mergedData;
-        });
-        
-        // Update uploaded files list
-        setUploadedFiles(prevFiles => {
-          const newFile = { file, bankType, rowCount };
-          return mergeWithExisting ? [...prevFiles, newFile] : [newFile];
-        });
-        
         incrementStat('files_uploaded');
-        incrementStat('rows_analyzed', rowCount);
-        trackCSVUpload(rowCount, bankType);
+          incrementStat('rows_analyzed', rowCount);
+          trackCSVUpload(rowCount, bankType);
+          
+          return newCounters;
+        });
       },
     });
   };
@@ -610,7 +625,7 @@ const App: React.FC = () => {
   // Identify high-confidence subscriptions (same price for 6 months straight)
   const highConfidenceSubscriptions = useMemo(() => {
     return subscriptions.filter((sub) => {
-    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [] };
+    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [], accounts: [], banks: new Set<string>() };
       if (raw.amounts.length < 6) return false; // Need at least 6 payments
       
       // Sort by date
@@ -1503,7 +1518,28 @@ const App: React.FC = () => {
                           raw.dates.forEach((d) => { dowCounts[d.getDay()] += 1; });
                           const dowLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                           return (
-                            <div className="subscription-card" key={sub.description}>
+                            <div className="subscription-card" key={sub.description} style={{ position: 'relative' }}>
+                              {/* Bank name badge */}
+                              {(() => {
+                                const raw = subscriptionRawData[sub.description] || { banks: new Set<string>() };
+                                const banks = Array.from(raw.banks);
+                                return banks.length > 0 && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '1rem',
+                                    right: '1rem',
+                                    padding: '0.25rem 0.75rem',
+                                    borderRadius: '6px',
+                                    fontSize: '0.85rem',
+                                    fontWeight: 600,
+                                    background: 'rgba(139, 0, 139, 0.2)',
+                                    color: '#8b008b',
+                                    border: '1px solid rgba(139, 0, 139, 0.4)'
+                                  }}>
+                                    {banks.join(', ')}
+                                  </div>
+                                );
+                              })()}
                               <h3>{sub.description}</h3>
                               <div className="subscription-details">
                                 <table className="mini-stats-table">
@@ -1826,6 +1862,32 @@ const App: React.FC = () => {
                       flexWrap: 'wrap',
                       alignItems: 'center'
                     }}>
+                      <div style={{ flex: '1', minWidth: '150px' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
+                          Filter by Account
+                        </label>
+                        <select
+                          value={accountFilter}
+                          onChange={(e) => setAccountFilter(e.target.value)}
+                          className="transaction-filter-select"
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '1rem',
+                            fontFamily: 'Inter, sans-serif',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="All" style={{ background: '#2a3b4c', color: 'white' }}>All Accounts</option>
+                          {Array.from(new Set(csvData.map(tx => tx.Account))).sort().map(account => (
+                            <option key={account} value={account} style={{ background: '#2a3b4c', color: 'white' }}>{account}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div style={{ flex: '1', minWidth: '200px' }}>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
                           Filter by Type
@@ -1931,6 +1993,7 @@ const App: React.FC = () => {
                         <thead>
                           <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Date</th>
+                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Account</th>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Description</th>
                             <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Amount</th>
                             <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Balance</th>
@@ -2025,133 +2088,55 @@ const App: React.FC = () => {
                       });
                       
                       return filteredTransactions.map((transaction, index) => {
-                            // Get all keys to help with debugging and field access
-                            const keys = Object.keys(transaction);
-                            
-                            // Detect bank format - check for AIB-specific fields (try with and without spaces)
-                            const isAIB = keys.some(k => 
-                              k.includes('Posted Account') || 
-                              k.includes('Posted Transactions Date') || 
-                              k.includes('Description1')
-                            );
-                            
-                            // Extract description
-                            let description = '';
-                            if (isAIB) {
-                              // AIB: use only Description1, remove prefixes like VDP-, VDC-, D/D, etc.
-                              const desc1Key = keys.find(k => k.trim() === 'Description1' || k.includes('Description1'));
-                              let rawDescription = desc1Key ? String((transaction as any)[desc1Key] || '').trim() : '';
-                              // Remove prefixes like VDP-, VDC-, D/D, etc. (everything up to and including the first hyphen)
-                              if (rawDescription.includes('-')) {
-                                const parts = rawDescription.split('-');
-                                if (parts.length > 1) {
-                                  description = parts.slice(1).join('-').trim(); // Join in case there are multiple hyphens
-                                } else {
-                                  description = rawDescription;
-                                }
-                              } else {
-                                description = rawDescription;
-                              }
-                            } else {
-                              // Revolut: single Description field
-                              const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
-                              description = descKey ? (transaction as any)[descKey] || '' : '';
-                            }
-                            
-                            // Extract amount
-                            let amount = 0;
-                            if (isAIB) {
-                              // AIB: use Debit Amount (negative) or Credit Amount (positive)
-                              const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
-                              const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
-                              
-                              const debitAmount = debitKey ? (transaction as any)[debitKey] : '';
-                              const creditAmount = creditKey ? (transaction as any)[creditKey] : '';
-                              
-                              if (debitAmount && String(debitAmount).trim()) {
-                                amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
-                              } else if (creditAmount && String(creditAmount).trim()) {
-                                amount = parseFloat(String(creditAmount).replace(/,/g, ''));
-                              }
-                            } else {
-                              // Revolut: single Amount field (already signed)
-                              const amountKey = keys.find(k => k.trim() === 'Amount' || k.includes('Amount'));
-                              amount = amountKey ? parseFloat((transaction as any)[amountKey] || '0') : 0;
-                            }
-                            
-                            // Extract date
-                            let date = '';
-                            if (isAIB) {
-                              const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
-                              date = dateKey ? (transaction as any)[dateKey] || '' : '';
-                            } else {
-                              const completedKey = keys.find(k => k.trim() === 'Completed Date' || k.includes('Completed Date'));
-                              const startedKey = keys.find(k => k.trim() === 'Started Date' || k.includes('Started Date'));
-                              date = completedKey ? (transaction as any)[completedKey] : 
-                                     startedKey ? (transaction as any)[startedKey] : 
-                                     transaction.Date || '';
-                            }
-                            
-                            // Extract balance
-                            const balanceKey = keys.find(k => k.trim() === 'Balance' || k.includes('Balance'));
-                            const balance = balanceKey ? parseFloat((transaction as any)[balanceKey] || '0') : 0;
-                            
                             // Check if this transaction is a subscription
                             const isSubscription = subscriptions.some(sub => 
-                              sub.description.toLowerCase() === description.toLowerCase()
+                              sub.description.toLowerCase() === transaction.Description.toLowerCase()
                             );
                             
                             // Determine transaction type
-                            const isCredit = amount > 0;
-                            const isDebit = amount < 0;
+                            const isCredit = transaction.Amount > 0;
+                            const isDebit = transaction.Amount < 0;
                             
                             // Set row background color
                             let rowBgColor = 'transparent';
                             if (isSubscription) {
-                              rowBgColor = 'rgba(247, 37, 133, 0.15)'; // Soft red for subscriptions
+                              rowBgColor = 'rgba(255, 68, 68, 0.15)'; // Soft red for subscriptions
                             } else if (isCredit) {
-                              rowBgColor = 'rgba(76, 201, 240, 0.15)'; // Soft green for credits
+                              rowBgColor = 'rgba(76, 175, 80, 0.15)'; // Soft green for credits
                             } else if (isDebit) {
-                              rowBgColor = 'rgba(255, 165, 0, 0.15)'; // Soft orange for debits
+                              rowBgColor = 'rgba(255, 152, 0, 0.15)'; // Soft orange for debits
                             }
                             
-                            // Format date
-                            let formattedDate = date;
-                            try {
-                              // Try to parse and format the date
-                              if (date.includes('/')) {
-                                // AIB format: DD/MM/YYYY
-                                const [day, month, year] = date.split('/');
-                                formattedDate = `${year}-${month}-${day}`;
-                              } else if (date.includes('-') && date.includes(' ')) {
-                                // Revolut format: YYYY-MM-DD HH:MM:SS
-                                formattedDate = date.split(' ')[0];
-                              }
-                            } catch (e) {
-                              // Keep original if parsing fails
-                            }
+                            // Format date for display (already normalized to ISO format)
+                            const dateObj = new Date(transaction.Date);
+                            const formattedDate = !isNaN(dateObj.getTime()) 
+                              ? dateObj.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                              : transaction.Date;
                             
                             return (
                               <tr 
                                 key={index} 
                                 style={{ 
                                   backgroundColor: rowBgColor,
-                                  borderBottom: index < csvData.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
+                                  borderBottom: index < filteredTransactions.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none',
                                   transition: 'background-color 0.2s'
                                 }}
                               >
                                 <td style={{ padding: '1rem', color: 'white' }}>{formattedDate}</td>
-                                <td style={{ padding: '1rem', color: 'white' }}>{description}</td>
+                                <td style={{ padding: '1rem', color: 'white', fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 500 }}>{transaction.Account}</td>
+                                <td style={{ padding: '1rem', color: 'white' }}>{transaction.Description}</td>
                                 <td style={{ 
                                   padding: '1rem', 
                                   textAlign: 'right', 
                                   color: isCredit ? '#4cc9f0' : 'white', 
                                   fontWeight: 500 
                                 }}>
-                                  {amount > 0 ? '+' : ''}€{Math.abs(amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {transaction.Amount >= 0 ? '+' : ''}€{Math.abs(transaction.Amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
-                                <td style={{ padding: '1rem', textAlign: 'right', color: 'white' }}>
-                                  €{balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>
+                                  {transaction.Balance !== undefined && transaction.Balance !== 0 
+                                    ? `€${transaction.Balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                    : '-'}
                                 </td>
                               </tr>
                             );
