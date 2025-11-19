@@ -546,9 +546,23 @@ const App: React.FC = () => {
           incrementStat('rows_analyzed', rowCount);
           trackCSVUpload(rowCount, bankType, 'file_processing');
           
+          // Call completion callback and resolve promise
+          if (onComplete) {
+            onComplete();
+          }
+          resolve();
+          
           return newCounters;
         });
       },
+      error: (error) => {
+        console.error('Error parsing CSV:', error);
+        if (onComplete) {
+          onComplete();
+        }
+        resolve();
+      }
+    });
     });
   };
 
