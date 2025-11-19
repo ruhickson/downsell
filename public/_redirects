@@ -1,3 +1,6 @@
+# Redirect favicon.ico to actual favicon
+/favicon.ico  /broc_favicon1.png  200
+
 # Redirect common bot scan paths to 404
 /.git/*  /404.html  404
 /.env    /404.html  404
@@ -8,6 +11,9 @@
 /_profiler/*  /404.html  404
 /test/*.php  /404.html  404
 /dev/*.php  /404.html  404
+/wp-login.php  /404.html  404
+/wp-includes/*  /404.html  404
+/.aws/*  /404.html  404
 
 # Fallback for SPA
 /*    /index.html   200
