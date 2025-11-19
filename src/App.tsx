@@ -530,6 +530,8 @@ const App: React.FC = () => {
     const files = e.dataTransfer.files;
     if (!files || files.length === 0) return;
     
+    trackButtonClick('CSV Upload', { method: 'drag_drop', file_count: files.length });
+    
     // Process all dropped files
     Array.from(files).forEach((file, index) => {
       processCSVFile(file, index > 0 || csvData.length > 0); // Merge if there's existing data or multiple files
