@@ -2676,7 +2676,8 @@ const App: React.FC = () => {
                     </p>
                     <p>
                       <strong style={{ color: 'white' }}>Email:</strong> <a href="mailto:ruairi@broc.fi" style={{ color: '#2d8cff', textDecoration: 'none' }}>ruairi@broc.fi</a><br />
-                      <strong style={{ color: 'white' }}>Website:</strong> <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a>
+                      <strong style={{ color: 'white' }}>Website:</strong> <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a><br />
+                      <strong style={{ color: 'white' }}>Source Code:</strong> <a href="https://github.com/ruhickson/downsell" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://github.com/ruhickson/downsell</a>
                     </p>
                   </section>
                 </div>
