@@ -1941,10 +1941,12 @@ const App: React.FC = () => {
                                   : sub.frequencyLabel === 'Daily'
                                     ? -sub.average * 30
                                     : -sub.average;
+                              const rowNumber = index + 1; // 1-indexed row number
+                              const totalAmount = -sub.total; // Total amount (negative because it's a debit)
                               return (
                                 <tr key={sub.description} style={{ borderBottom: index < highConfidenceSubscriptions.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
                                   <td style={{ padding: '1rem', color: 'white' }}>{sub.description}</td>
-                                  <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{monthlySpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td style={{ padding: '1rem', textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -1954,7 +1956,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="optimize-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block' }}
-                                        onClick={() => trackButtonClick('Switch Subscription', { subscription: sub.description })}
+                                        onClick={() => trackButtonClick('Switch Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount })}
                                       >
                                         Switch
                                       </a>
@@ -1964,7 +1966,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="alt-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block', background: 'rgba(247, 37, 133, 0.2)', color: '#f72585', border: '1px solid #f72585' }}
-                                        onClick={() => trackButtonClick('Cancel Subscription', { subscription: sub.description })}
+                                        onClick={() => trackButtonClick('Cancel Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount })}
                                       >
                                         Cancel
                                       </a>

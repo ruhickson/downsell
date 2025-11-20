@@ -19,7 +19,7 @@ export const handler = async (event: any) => {
 
   try {
     const eventData = JSON.parse(event.body || '{}');
-    const { buttonName, location, subscription, status, method, file_count, ...otherContext } = eventData;
+    const { buttonName, location, row_number, amount, status, method, file_count, ...otherContext } = eventData;
     const timestamp = new Date().toISOString();
     const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
     const userAgent = event.headers['user-agent'] || 'unknown';
@@ -29,7 +29,8 @@ export const handler = async (event: any) => {
       event: 'BUTTON_CLICK',
       buttonName,
       location: location || 'unknown',
-      subscription: subscription || null,
+      row_number: row_number || null,
+      amount: amount || null,
       status: status || null,
       method: method || null,
       file_count: file_count || null,
@@ -40,7 +41,7 @@ export const handler = async (event: any) => {
     }));
 
     // Also log a searchable line for quick filtering
-    console.log(`[BUTTON_CLICK] ${buttonName} | Location: ${location || 'unknown'} | Subscription: ${subscription || 'N/A'} | Status: ${status || 'N/A'}`);
+    console.log(`[BUTTON_CLICK] ${buttonName} | Location: ${location || 'unknown'} | Row: ${row_number || 'N/A'} | Amount: ${amount || 'N/A'} | Status: ${status || 'N/A'}`);
 
     // Save to Supabase if configured
     if (supabase) {
@@ -50,7 +51,8 @@ export const handler = async (event: any) => {
           .insert({
             button_name: buttonName,
             location: location || null,
-            subscription: subscription || null,
+            row_number: row_number || null,
+            amount: amount ? parseFloat(amount) : null,
             status: status || null,
             method: method || null,
             file_count: file_count || null,
@@ -71,7 +73,7 @@ export const handler = async (event: any) => {
     return {
       statusCode: 200,
       headers,
-      body: JSON.stringify({ success: true, buttonName, location, subscription, status }),
+      body: JSON.stringify({ success: true, buttonName, location, row_number, amount, status }),
     };
   } catch (error) {
     console.error('Error tracking button click:', error);

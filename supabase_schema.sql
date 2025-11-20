@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS button_clicks (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
   button_name TEXT NOT NULL,
   location TEXT,
-  subscription TEXT,
+  row_number INTEGER, -- Row position in the list (1-indexed)
+  amount NUMERIC(10, 2), -- Amount being switched or cancelled (for Switch/Cancel buttons)
   status TEXT,
   method TEXT,
   file_count INTEGER,
@@ -16,6 +17,29 @@ CREATE TABLE IF NOT EXISTS button_clicks (
   user_agent TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration: Update existing button_clicks table if it has the old schema
+-- Remove subscription column and add row_number and amount columns
+DO $$
+BEGIN
+  -- Drop subscription column if it exists
+  IF EXISTS (SELECT 1 FROM information_schema.columns 
+              WHERE table_name = 'button_clicks' AND column_name = 'subscription') THEN
+    ALTER TABLE button_clicks DROP COLUMN subscription;
+  END IF;
+  
+  -- Add row_number column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'button_clicks' AND column_name = 'row_number') THEN
+    ALTER TABLE button_clicks ADD COLUMN row_number INTEGER;
+  END IF;
+  
+  -- Add amount column if it doesn't exist
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                 WHERE table_name = 'button_clicks' AND column_name = 'amount') THEN
+    ALTER TABLE button_clicks ADD COLUMN amount NUMERIC(10, 2);
+  END IF;
+END $$;
 
 -- Table for CSV upload events
 CREATE TABLE IF NOT EXISTS csv_uploads (
@@ -61,6 +85,7 @@ CREATE TABLE IF NOT EXISTS page_views (
 -- Create indexes for better query performance
 CREATE INDEX IF NOT EXISTS idx_button_clicks_timestamp ON button_clicks(timestamp);
 CREATE INDEX IF NOT EXISTS idx_button_clicks_button_name ON button_clicks(button_name);
+CREATE INDEX IF NOT EXISTS idx_button_clicks_row_number ON button_clicks(row_number);
 CREATE INDEX IF NOT EXISTS idx_csv_uploads_timestamp ON csv_uploads(timestamp);
 CREATE INDEX IF NOT EXISTS idx_csv_uploads_bank_type ON csv_uploads(bank_type);
 CREATE INDEX IF NOT EXISTS idx_tab_navigations_timestamp ON tab_navigations(timestamp);
@@ -113,45 +138,55 @@ ALTER TABLE pdf_downloads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE page_views ENABLE ROW LEVEL SECURITY;
 
 -- Create a policy that allows service role to insert (for Netlify Functions)
--- Replace 'service_role_key' with your actual service role key pattern or use a different auth method
+-- Drop existing policies first if they exist, then create new ones
+DROP POLICY IF EXISTS "Allow service role inserts" ON button_clicks;
 CREATE POLICY "Allow service role inserts" ON button_clicks
   FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow service role inserts" ON csv_uploads;
 CREATE POLICY "Allow service role inserts" ON csv_uploads
   FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow service role inserts" ON tab_navigations;
 CREATE POLICY "Allow service role inserts" ON tab_navigations
   FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow service role inserts" ON pdf_downloads;
 CREATE POLICY "Allow service role inserts" ON pdf_downloads
   FOR INSERT
   WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow service role inserts" ON page_views;
 CREATE POLICY "Allow service role inserts" ON page_views
   FOR INSERT
   WITH CHECK (true);
 
 -- Optional: Create a policy for reading (adjust based on your needs)
 -- For now, we'll allow service role to read as well
+DROP POLICY IF EXISTS "Allow service role reads" ON button_clicks;
 CREATE POLICY "Allow service role reads" ON button_clicks
   FOR SELECT
   USING (true);
 
+DROP POLICY IF EXISTS "Allow service role reads" ON csv_uploads;
 CREATE POLICY "Allow service role reads" ON csv_uploads
   FOR SELECT
   USING (true);
 
+DROP POLICY IF EXISTS "Allow service role reads" ON tab_navigations;
 CREATE POLICY "Allow service role reads" ON tab_navigations
   FOR SELECT
   USING (true);
 
+DROP POLICY IF EXISTS "Allow service role reads" ON pdf_downloads;
 CREATE POLICY "Allow service role reads" ON pdf_downloads
   FOR SELECT
   USING (true);
 
+DROP POLICY IF EXISTS "Allow service role reads" ON page_views;
 CREATE POLICY "Allow service role reads" ON page_views
   FOR SELECT
   USING (true);
