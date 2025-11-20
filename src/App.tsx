@@ -594,7 +594,7 @@ const App: React.FC = () => {
       alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
     }
     
-    trackButtonClick('CSV Upload', { method: 'file_input', file_count: fileArray.length });
+    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'file_input', file_count: fileArray.length });
     
     // Process files sequentially to avoid state conflicts
     for (let i = 0; i < fileArray.length; i++) {
@@ -632,7 +632,7 @@ const App: React.FC = () => {
       alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
     }
     
-    trackButtonClick('CSV Upload', { method: 'drag_drop', file_count: fileArray.length });
+    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'drag_drop', file_count: fileArray.length });
     
     // Process files sequentially to avoid state conflicts
     for (let i = 0; i < fileArray.length; i++) {
@@ -892,6 +892,7 @@ const App: React.FC = () => {
   const handleDownloadReport = async () => {
     incrementStat('reports_downloaded');
     trackPDFDownload();
+    trackButtonClick('Download PDF Report', { location: 'report_page' });
     
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     let y = 40;
@@ -1167,7 +1168,10 @@ const App: React.FC = () => {
           <div style={{ padding: '1rem', marginTop: 'auto' }}>
             <button 
               className="optimize-btn" 
-              onClick={() => window.open('https://broc.fi', '_blank')}
+              onClick={() => {
+                trackButtonClick('Join Waitlist', { location: 'sidebar' });
+                window.open('https://broc.fi', '_blank');
+              }}
               style={{ width: '100%', padding: '0.75rem 1rem', fontSize: '0.95rem' }}
             >
               Join the Waitlist
