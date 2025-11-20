@@ -122,7 +122,7 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
 function normalizeTransaction(rawTx: RawTransaction, account: string): Transaction | null {
   const keys = Object.keys(rawTx);
   
-  // Detect bank format (check in order: Revolut, AIB, BOI)
+  // Detect bank format (check in order: Revolut, AIB, BOI, N26)
   const isRevolut = keys.some(k => 
     k.includes('Type') && 
     (k.includes('Started Date') || k.includes('Completed Date'))
@@ -137,6 +137,12 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     keys.some(k2 => k2.trim() === 'Details') &&
     keys.some(k3 => k3.trim() === 'Debit') &&
     keys.some(k4 => k4.trim() === 'Credit')
+  );
+  const isN26 = !isRevolut && !isAIB && !isBOI && (
+    keys.some(k => k.trim() === 'Booking Date' || k.includes('Booking Date')) &&
+    keys.some(k => k.trim() === 'Value Date' || k.includes('Value Date')) &&
+    keys.some(k => k.trim() === 'Partner Name' || k.includes('Partner Name')) &&
+    keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)'))
   );
   
   // Extract description
@@ -160,6 +166,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // BOI: use Details field directly
     const detailsKey = keys.find(k => k.trim() === 'Details' || k.includes('Details'));
     description = detailsKey ? String(rawTx[detailsKey] || '').trim() : '';
+  } else if (isN26) {
+    // N26: use Partner Name field directly
+    const partnerNameKey = keys.find(k => k.trim() === 'Partner Name' || k.includes('Partner Name'));
+    description = partnerNameKey ? String(rawTx[partnerNameKey] || '').trim() : '';
   } else {
     // Revolut: single Description field
     description = rawTx.Description || rawTx.description || '';
@@ -195,6 +205,12 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     } else if (creditAmount && String(creditAmount).trim()) {
       amount = parseFloat(String(creditAmount).replace(/,/g, ''));
     }
+  } else if (isN26) {
+    // N26: use Amount (EUR) field (already signed)
+    const amountKey = keys.find(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)'));
+    if (amountKey) {
+      amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
+    }
   } else {
     // Revolut: single Amount field (already signed)
     amount = parseFloat(rawTx.Amount || rawTx.amount || '0');
@@ -214,6 +230,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     } else {
       type = 'UNKNOWN';
     }
+  } else if (isN26) {
+    // N26: use Type field (Presentment, Debit Transfer, Credit Transfer, Direct Debit, Fee, etc.)
+    const typeKey = keys.find(k => k.trim() === 'Type' || k.includes('Type'));
+    type = typeKey ? String(rawTx[typeKey] || '').toUpperCase() : '';
   } else {
     type = (rawTx.Type || rawTx.type || '').toUpperCase();
   }
@@ -252,6 +272,13 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
         }
       }
     }
+  } else if (isN26) {
+    // N26: use Booking Date (YYYY-MM-DD format, already ISO)
+    const dateKey = keys.find(k => k.trim() === 'Booking Date' || k.includes('Booking Date'));
+    if (dateKey) {
+      dateStr = String(rawTx[dateKey] || '').trim();
+      // N26 dates are already in YYYY-MM-DD format
+    }
   } else {
     // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
     dateStr = (rawTx['Completed Date'] || rawTx['Started Date'] || rawTx.Date || rawTx.date || '').toString();
@@ -268,6 +295,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     currency = currencyKey ? String(rawTx[currencyKey] || '').trim() : 'EUR';
   } else if (isBOI) {
     // BOI doesn't have explicit currency field - default to EUR
+    currency = 'EUR';
+  } else if (isN26) {
+    // N26 exports show amounts in EUR in 'Amount (EUR)' field - default to EUR
     currency = 'EUR';
   } else {
     currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
@@ -287,7 +317,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : 'Revolut'),
+    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut')),
     Account: account,
     OriginalData: rawTx
   };
@@ -461,6 +491,9 @@ const App: React.FC = () => {
   const [accountFilter, setAccountFilter] = useState<string>('All');
   const [amountFilterType, setAmountFilterType] = useState<string>('none');
   const [amountFilterValue, setAmountFilterValue] = useState<string>('');
+  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(false);
+  const [privacyCollapsed, setPrivacyCollapsed] = useState<boolean>(false);
+  const [autopilotCollapsed, setAutopilotCollapsed] = useState<boolean>(false);
   const frequencyOptions = [
     'All',
     'Once-off/yearly',
@@ -494,7 +527,7 @@ const App: React.FC = () => {
         const rawData = results.data as RawTransaction[];
         const rowCount = rawData.length;
         
-        // Detect bank type from first row (check in order: Revolut, AIB, BOI)
+        // Detect bank type from first row (check in order: Revolut, AIB, BOI, N26)
         const firstRow = rawData[0];
         const keys = firstRow ? Object.keys(firstRow) : [];
         
@@ -518,7 +551,15 @@ const App: React.FC = () => {
           keys.some(k => k.trim() === 'Debit') &&
           keys.some(k => k.trim() === 'Credit');
         
-        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : 'Revolut');
+        // Check for N26 (must have: Booking Date, Value Date, Partner Name, Amount (EUR))
+        const isN26 = !isRevolut && !isAIB && !isBOI && (
+          (keys.some(k => k.trim() === 'Booking Date' || k.includes('Booking Date')) &&
+           keys.some(k => k.trim() === 'Value Date' || k.includes('Value Date')) &&
+           keys.some(k => k.trim() === 'Partner Name' || k.includes('Partner Name')) &&
+           keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)')))
+        );
+        
+        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut'));
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -528,6 +569,8 @@ const App: React.FC = () => {
             ? `AIB-${newCounters[bankType]}` 
             : bankType === 'BOI'
             ? `BOI-${newCounters[bankType]}`
+            : bankType === 'N26'
+            ? `N26-${newCounters[bankType]}`
             : `REV-${newCounters[bankType]}`;
           
           // Normalize all transactions with account identifier
@@ -1221,16 +1264,33 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
-                  <p style={{ margin: 0 }}>
-                    Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
-                  </p>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setAboutCollapsed(!aboutCollapsed)}
+                  >
+                    <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {aboutCollapsed ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!aboutCollapsed && (
+                    <>
+                      <p style={{ margin: 0 }}>
+                        Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div style={{ 
                   padding: '1rem 1.5rem', 
@@ -1242,13 +1302,30 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
-                  <p style={{ margin: 0 }}>
-                    All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    This is a free public tool designed to help everyone understand their finances better.
-                  </p>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setPrivacyCollapsed(!privacyCollapsed)}
+                  >
+                    <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {privacyCollapsed ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!privacyCollapsed && (
+                    <>
+                      <p style={{ margin: 0 }}>
+                        All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        This is a free public tool designed to help everyone understand their finances better.
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div style={{ 
                   padding: '1rem 1.5rem', 
@@ -1260,19 +1337,36 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
-                  <p style={{ margin: 0 }}>
-                    Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Join the waitlist and be first when we launch.
-                  </p>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setAutopilotCollapsed(!autopilotCollapsed)}
+                  >
+                    <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {autopilotCollapsed ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!autopilotCollapsed && (
+                    <>
+                      <p style={{ margin: 0 }}>
+                        Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Join the waitlist and be first when we launch.
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div style={{ 
                   padding: '1rem 1.5rem', 
@@ -1284,9 +1378,65 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>📋 Supported Banks</strong>
-                  <p style={{ margin: 0 }}>
-                    Downsell currently works with CSVs exported from <strong>Revolut</strong>, <strong>AIB</strong>, and <strong>Bank of Ireland</strong>. We're expanding to support more banks in the coming weeks.
+                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.75rem' }}>📋 Supported Banks</strong>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: '0.75rem', 
+                    alignItems: 'center',
+                    marginBottom: '0.75rem'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
+                      <strong style={{ color: 'white' }}>Revolut</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🏛️</span>
+                      <strong style={{ color: 'white' }}>AIB</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
+                      <strong style={{ color: 'white' }}>Bank of Ireland</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>💳</span>
+                      <strong style={{ color: 'white' }}>N26</strong>
+                    </div>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
+                    We're expanding to support more banks in the coming weeks.
                   </p>
                 </div>
                 <div className={"upload-area" + (dragActive ? " drag-active" : "")}
