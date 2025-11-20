@@ -1,4 +1,6 @@
 // Netlify Function to track button clicks
+import { supabase } from './_supabase';
+
 export const handler = async (event: any) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -39,6 +41,32 @@ export const handler = async (event: any) => {
 
     // Also log a searchable line for quick filtering
     console.log(`[BUTTON_CLICK] ${buttonName} | Location: ${location || 'unknown'} | Subscription: ${subscription || 'N/A'} | Status: ${status || 'N/A'}`);
+
+    // Save to Supabase if configured
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('button_clicks')
+          .insert({
+            button_name: buttonName,
+            location: location || null,
+            subscription: subscription || null,
+            status: status || null,
+            method: method || null,
+            file_count: file_count || null,
+            context: Object.keys(otherContext).length > 0 ? otherContext : null,
+            timestamp: timestamp,
+            ip_address: ip,
+            user_agent: userAgent,
+          });
+
+        if (error) {
+          console.error('Error saving to Supabase:', error);
+        }
+      } catch (dbError) {
+        console.error('Database error (non-blocking):', dbError);
+      }
+    }
 
     return {
       statusCode: 200,

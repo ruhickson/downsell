@@ -1,4 +1,6 @@
 // Netlify Function to track CSV uploads
+import { supabase } from './_supabase';
+
 export const handler = async (event: any) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -35,6 +37,28 @@ export const handler = async (event: any) => {
 
     // Also log a searchable line for quick filtering
     console.log(`[CSV_UPLOAD] Bank: ${bankType || 'unknown'} | Rows: ${rowCount || 0} | Method: ${method || 'unknown'}`);
+
+    // Save to Supabase if configured
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('csv_uploads')
+          .insert({
+            row_count: rowCount || 0,
+            bank_type: bankType || 'unknown',
+            method: method || 'unknown',
+            timestamp: timestamp,
+            ip_address: ip,
+            user_agent: userAgent,
+          });
+
+        if (error) {
+          console.error('Error saving to Supabase:', error);
+        }
+      } catch (dbError) {
+        console.error('Database error (non-blocking):', dbError);
+      }
+    }
 
     return {
       statusCode: 200,
