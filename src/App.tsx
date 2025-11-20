@@ -2383,7 +2383,8 @@ const App: React.FC = () => {
                     <p>
                       <strong style={{ color: 'white' }}>Contact Information:</strong><br />
                       Email: ruairi@broc.fi<br />
-                      Website: <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a>
+                      Website: <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a><br />
+                      Source Code: <a href="https://github.com/ruhickson/downsell" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://github.com/ruhickson/downsell</a>
                     </p>
                   </section>
 
