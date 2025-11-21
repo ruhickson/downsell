@@ -125,23 +125,33 @@ If unsure about any transaction, use "Other" for that transaction.`;
       const data = await response.json();
       const geminiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
       
+      console.log(`📥 [DEV] Gemini response (first 500 chars):`, geminiResponse.substring(0, 500));
+      
       // Try to extract JSON from response
       const jsonMatch = geminiResponse.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         try {
           const result = JSON.parse(jsonMatch[0]);
+          console.log(`📋 [DEV] Parsed JSON result:`, result);
+          
           const categoryMap: Record<string, Category> = {};
           
           descriptions.forEach((desc, idx) => {
             const category = result[String(idx + 1)] || result[idx + 1] || 'Other';
             categoryMap[desc] = category as Category;
+            if (category !== 'Other') {
+              console.log(`  ✅ "${desc}" → ${category}`);
+            }
           });
           
-          console.log(`✅ [DEV] Successfully parsed ${Object.keys(categoryMap).length} categories from Gemini`);
+          const nonOtherCount = Object.values(categoryMap).filter(cat => cat !== 'Other').length;
+          console.log(`✅ [DEV] Successfully parsed ${Object.keys(categoryMap).length} categories from Gemini (${nonOtherCount} non-Other)`);
           return categoryMap;
         } catch (parseError) {
           console.error('❌ [DEV] JSON parsing error:', parseError, 'Response:', jsonMatch[0]);
         }
+      } else {
+        console.error('❌ [DEV] No JSON found in response. Full response:', geminiResponse);
       }
       
       throw new Error('Failed to parse Gemini response');
@@ -205,19 +215,30 @@ export async function enhanceCategoriesWithLLM(
   }
   
   // Update all transactions with enhanced categories
+  // Create new array with new objects to ensure React detects the change
   let updatedCount = 0;
-  enhancedTransactions.forEach(tx => {
+  const finalTransactions = enhancedTransactions.map(tx => {
     if (!tx.Category || tx.Category === 'Other') {
       const enhancedCategory = categoryMap[tx.Description] || 'Other';
       if (enhancedCategory !== 'Other') {
         updatedCount++;
+        console.log(`  🔄 Updating "${tx.Description}" from "Other" to "${enhancedCategory}"`);
       }
-      tx.Category = enhancedCategory;
+      // Return new object with updated category
+      return { ...tx, Category: enhancedCategory };
     }
+    return tx; // Return unchanged transaction
   });
   
   console.log(`✅ Enhanced ${updatedCount} transactions (${uniqueDescriptions.length} unique descriptions processed)`);
-  return enhancedTransactions;
+  console.log(`📊 Final category distribution:`, Object.entries(
+    finalTransactions.reduce((acc, tx) => {
+      const cat = tx.Category || 'Other';
+      acc[cat] = (acc[cat] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>)
+  ));
+  return finalTransactions;
 }
 
 /**
