@@ -1,5 +1,8 @@
 // Netlify Function to categorize transactions using Gemini API
 // Keeps API key secure on server-side
+// Also caches results in Supabase for future use
+
+import { supabase } from './_supabase';
 
 export const handler = async (event: any) => {
   const headers = {
@@ -119,6 +122,33 @@ Only use "Other" if you truly cannot determine what the merchant/service is even
         
         const nonOtherCount = Object.values(categoryMap).filter(cat => cat !== 'Other').length;
         console.log(`Successfully categorized ${nonOtherCount}/${descriptions.length} as non-Other`);
+        
+        // Cache results in Supabase for future use (fire and forget)
+        if (supabase && nonOtherCount > 0) {
+          const cacheEntries = Object.entries(categoryMap)
+            .filter(([_, category]) => category !== 'Other')
+            .map(([name, category]) => ({
+              transaction_name: name.trim().toUpperCase(),
+              category: category,
+            }));
+          
+          if (cacheEntries.length > 0) {
+            supabase
+              .from('category_transaction')
+              .upsert(cacheEntries, {
+                onConflict: 'transaction_name',
+                ignoreDuplicates: false,
+              })
+              .then(({ error }) => {
+                if (error) {
+                  console.warn('Failed to cache categories:', error);
+                } else {
+                  console.log(`✅ Cached ${cacheEntries.length} category mappings`);
+                }
+              })
+              .catch(err => console.warn('Cache write error (non-blocking):', err));
+          }
+        }
         
         return {
           statusCode: 200,
