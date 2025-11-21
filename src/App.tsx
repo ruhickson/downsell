@@ -2155,8 +2155,11 @@ const App: React.FC = () => {
                       return hasCategories ? (
                         <>
                           <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Spending Flow by Category</h2>
+                          <p style={{ marginBottom: '1rem', color: '#bfc9da', fontSize: '0.95rem' }}>
+                            Click on any category to see a detailed breakdown of transactions.
+                          </p>
                           <div style={{ marginBottom: '2rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '2rem' }}>
-                            <SankeyDiagram data={categorySpending} />
+                            <SankeyDiagram data={categorySpending} transactions={csvData} />
                           </div>
                         </>
                       ) : null;

@@ -1,11 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { getCategoryColor, type Category } from './categories';
+
+interface Transaction {
+  Description: string;
+  Amount: number;
+  Date: string;
+  Category?: string;
+}
 
 interface SankeyDiagramProps {
   data: Record<string, number>; // Category -> total spending
+  transactions?: Transaction[]; // Optional: full transaction data for breakdown
 }
 
-const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data }) => {
+const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data, transactions = [] }) => {
+  const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   // Calculate total spending
   const totalSpending = Object.values(data).reduce((sum, val) => sum + val, 0);
   
@@ -141,6 +150,7 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data }) => {
           const y = rightNodesY[index];
           const percentage = ((value / totalSpending) * 100).toFixed(1);
           const nodeWidth = 220;
+          const isExpanded = expandedCategory === category;
           
           return (
             <g key={category}>
@@ -151,7 +161,18 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data }) => {
                 height={nodeHeight}
                 fill={nodes[index + 1].color}
                 rx={6}
-                style={{ filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))' }}
+                style={{ 
+                  filter: 'drop-shadow(0 4px 8px rgba(0,0,0,0.3))',
+                  cursor: 'pointer',
+                  opacity: isExpanded ? 0.9 : 1
+                }}
+                onClick={() => setExpandedCategory(isExpanded ? null : category)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.opacity = '0.85';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.opacity = isExpanded ? '0.9' : '1';
+                }}
               />
               <text
                 x={rightColumnX + nodeWidth / 2}
@@ -161,6 +182,7 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data }) => {
                 fill="white"
                 fontSize="13"
                 fontWeight="600"
+                style={{ cursor: 'pointer', pointerEvents: 'none' }}
               >
                 {category}
               </text>
@@ -172,13 +194,127 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data }) => {
                 fill="white"
                 fontSize="12"
                 opacity={0.95}
+                style={{ cursor: 'pointer', pointerEvents: 'none' }}
               >
                 €{value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({percentage}%)
+              </text>
+              {/* Expand/collapse indicator */}
+              <text
+                x={rightColumnX + nodeWidth - 15}
+                y={y + nodeHeight / 2 + 5}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fill="white"
+                fontSize="16"
+                fontWeight="bold"
+                style={{ cursor: 'pointer', pointerEvents: 'none' }}
+              >
+                {isExpanded ? '−' : '+'}
               </text>
             </g>
           );
         })}
       </svg>
+      
+      {/* Category breakdown panel */}
+      {expandedCategory && transactions.length > 0 && (() => {
+        // Get all transactions for this category
+        const categoryTransactions = transactions
+          .filter(tx => tx.Amount < 0 && (tx.Category || 'Other') === expandedCategory)
+          .map(tx => ({
+            description: tx.Description,
+            amount: Math.abs(tx.Amount),
+            date: tx.Date,
+          }))
+          .sort((a, b) => b.amount - a.amount); // Sort by amount descending
+        
+        // Group by description and sum amounts
+        const groupedTransactions: Record<string, { count: number; total: number; lastDate: string }> = {};
+        categoryTransactions.forEach(tx => {
+          if (!groupedTransactions[tx.description]) {
+            groupedTransactions[tx.description] = { count: 0, total: 0, lastDate: tx.date };
+          }
+          groupedTransactions[tx.description].count++;
+          groupedTransactions[tx.description].total += tx.amount;
+          if (new Date(tx.date) > new Date(groupedTransactions[tx.description].lastDate)) {
+            groupedTransactions[tx.description].lastDate = tx.date;
+          }
+        });
+        
+        const groupedList = Object.entries(groupedTransactions)
+          .map(([description, data]) => ({
+            description,
+            ...data,
+          }))
+          .sort((a, b) => b.total - a.total);
+        
+        return (
+          <div style={{
+            marginTop: '2rem',
+            background: 'rgba(255, 255, 255, 0.05)',
+            borderRadius: '12px',
+            padding: '1.5rem',
+            border: `2px solid ${getCategoryColor(expandedCategory as Category)}`,
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+              <h3 style={{ margin: 0, color: 'white', fontSize: '1.2rem' }}>
+                {expandedCategory} Breakdown
+              </h3>
+              <button
+                onClick={() => setExpandedCategory(null)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  padding: '0.5rem 1rem',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.9rem',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                Close
+              </button>
+            </div>
+            
+            {groupedList.length > 0 ? (
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid rgba(255, 255, 255, 0.2)' }}>
+                      <th style={{ padding: '0.75rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600 }}>Transaction</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600 }}>Count</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600 }}>Total Amount</th>
+                      <th style={{ padding: '0.75rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600 }}>Average</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupedList.map((item, idx) => (
+                      <tr key={item.description} style={{ borderBottom: idx < groupedList.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
+                        <td style={{ padding: '0.75rem', color: 'white' }}>{item.description}</td>
+                        <td style={{ padding: '0.75rem', textAlign: 'right', color: '#bfc9da' }}>{item.count}</td>
+                        <td style={{ padding: '0.75rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>
+                          €{item.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '0.75rem', textAlign: 'right', color: '#bfc9da' }}>
+                          €{(item.total / item.count).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p style={{ color: '#888', textAlign: 'center', padding: '1rem' }}>No transactions found in this category.</p>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };
