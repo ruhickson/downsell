@@ -82,9 +82,6 @@ Only use "Other" if you truly cannot determine what the merchant/service is even
           temperature: 0.2, // Lower temperature for more consistent categorization
           maxOutputTokens: 2000, // Increased for larger batches
         },
-        tools: [{
-          googleSearch: {} // Enable Google Search grounding for web search
-        }],
       }),
     });
 

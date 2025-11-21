@@ -132,9 +132,6 @@ Only use "Other" if you truly cannot determine what the merchant/service is even
             temperature: 0.2,
             maxOutputTokens: 2000,
           },
-          tools: [{
-            googleSearch: {} // Enable Google Search grounding for web search
-          }],
         }),
       });
 
