@@ -2101,6 +2101,34 @@ const App: React.FC = () => {
                       </p>
                     </div>
 
+                    {/* Sankey Diagram - Spending Flow by Category */}
+                    {(() => {
+                      // Calculate spending by category
+                      const categorySpending: Record<string, number> = {};
+                      csvData.forEach(tx => {
+                        if (tx.Amount < 0) { // Only outgoing transactions
+                          const category = tx.Category || 'Other';
+                          categorySpending[category] = (categorySpending[category] || 0) + Math.abs(tx.Amount);
+                        }
+                      });
+
+                      // Show if there's any spending data
+                      const totalSpending = Object.values(categorySpending).reduce((sum, val) => sum + val, 0);
+                      const hasCategories = totalSpending > 0;
+                      
+                      return hasCategories ? (
+                        <>
+                          <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Spending Flow by Category</h2>
+                          <p style={{ marginBottom: '1rem', color: '#bfc9da', fontSize: '0.95rem' }}>
+                            Click on any category to see a detailed breakdown of transactions.
+                          </p>
+                          <div style={{ marginBottom: '2rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '2rem' }}>
+                            <SankeyDiagram data={categorySpending} transactions={csvData} />
+                          </div>
+                        </>
+                      ) : null;
+                    })()}
+
                     <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Top 15 Outgoings</h2>
                     <div style={{ marginBottom: '2.5rem', overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', overflow: 'hidden' }}>
@@ -2197,34 +2225,6 @@ const App: React.FC = () => {
                         }}
                       />
                     </div>
-
-                    {/* Sankey Diagram - Spending Flow by Category */}
-                    {(() => {
-                      // Calculate spending by category
-                      const categorySpending: Record<string, number> = {};
-                      csvData.forEach(tx => {
-                        if (tx.Amount < 0) { // Only outgoing transactions
-                          const category = tx.Category || 'Other';
-                          categorySpending[category] = (categorySpending[category] || 0) + Math.abs(tx.Amount);
-                        }
-                      });
-
-                      // Show if there's any spending data
-                      const totalSpending = Object.values(categorySpending).reduce((sum, val) => sum + val, 0);
-                      const hasCategories = totalSpending > 0;
-                      
-                      return hasCategories ? (
-                        <>
-                          <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Spending Flow by Category</h2>
-                          <p style={{ marginBottom: '1rem', color: '#bfc9da', fontSize: '0.95rem' }}>
-                            Click on any category to see a detailed breakdown of transactions.
-                          </p>
-                          <div style={{ marginBottom: '2rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '2rem' }}>
-                            <SankeyDiagram data={categorySpending} transactions={csvData} />
-                          </div>
-                        </>
-                      ) : null;
-                    })()}
 
                     <div style={{ marginTop: '2rem', textAlign: 'center' }}>
                       <button className="optimize-btn" onClick={handleDownloadReport}>Download PDF Report</button>
