@@ -1,7 +1,7 @@
 // Utility to enhance transaction categories using Gemini API
 // Only enhances transactions categorized as "Other" to save API calls
 
-import { categorizeTransaction, type Category } from './categories';
+import { type Category } from './categories';
 
 // Transaction type (matches App.tsx)
 type Transaction = {

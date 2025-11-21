@@ -716,21 +716,8 @@ const App: React.FC = () => {
     trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'file_input', file_count: fileArray.length });
     
     // Process files sequentially to avoid state conflicts
-    let allMergedData: Transaction[] = [...csvData];
     for (let i = 0; i < fileArray.length; i++) {
-      await new Promise<void>((resolve) => {
-        // Get the merged data after processing
-        processCSVFile(fileArray[i], i > 0 || csvData.length > 0, () => {
-          // Read the updated state after a short delay to ensure state has updated
-          setTimeout(() => {
-            setCsvData(currentData => {
-              allMergedData = currentData;
-              resolve();
-              return currentData;
-            });
-          }, 100);
-        });
-      });
+      await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
     }
     
     // Reset input to allow selecting the same files again
