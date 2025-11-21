@@ -231,58 +231,69 @@ export async function enhanceCategoriesWithLLM(
   
   if (uncachedDescriptions.length > 0) {
     console.log(`🤖 Using AI to categorize ${uncachedDescriptions.length} new transaction names...`);
-  
+    
     // Process in batches with retry logic and timeout handling
     for (let i = 0; i < uncachedDescriptions.length; i += batchSize) {
       const batch = uncachedDescriptions.slice(i, i + batchSize);
       const batchNumber = Math.floor(i / batchSize) + 1;
       const totalBatches = Math.ceil(uncachedDescriptions.length / batchSize);
-    console.log(`📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} transactions, ${uniqueDescriptions.length - i} remaining)...`);
-    
-    let batchResults: Record<string, Category> | null = null;
-    let retries = 3;
-    
-    // Retry logic for failed batches
-    while (retries > 0 && !batchResults) {
-      try {
-        // In development, pass API key for fallback; in production, it's not needed
-        const devApiKey = import.meta.env.DEV ? (apiKey || import.meta.env.VITE_GEMINI_API_KEY) : undefined;
-        
-        // Add timeout to prevent hanging (30 seconds per batch)
-        batchResults = await Promise.race([
-          batchCategorizeWithGemini(batch, devApiKey),
-          new Promise<Record<string, Category>>((_, reject) => 
-            setTimeout(() => reject(new Error('Batch timeout after 30 seconds')), 30000)
-          )
-        ]);
-        
-        const categorizedCount = Object.values(batchResults).filter(cat => cat !== 'Other').length;
-        console.log(`✅ Batch ${batchNumber}: Categorized ${categorizedCount}/${batch.length} transactions`);
-        Object.assign(categoryMap, batchResults);
-        break; // Success, exit retry loop
-      } catch (error) {
-        retries--;
-        if (retries > 0) {
-          const waitTime = (4 - retries) * 2000; // Exponential backoff: 2s, 4s, 6s
-          console.warn(`⚠️ Batch ${batchNumber} failed, retrying in ${waitTime/1000}s... (${retries} attempts left)`, error);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-        } else {
-          console.error(`❌ Failed to enhance batch ${batchNumber} after 3 attempts:`, error);
-          // Fallback: mark all in this batch as "Other" to continue processing
-          batch.forEach(desc => {
-            if (!categoryMap[desc]) {
-              categoryMap[desc] = 'Other';
+      console.log(`📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} transactions, ${uncachedDescriptions.length - i} remaining)...`);
+      
+      let batchResults: Record<string, Category> | null = null;
+      let retries = 3;
+      
+      // Retry logic for failed batches
+      while (retries > 0 && !batchResults) {
+        try {
+          // In development, pass API key for fallback; in production, it's not needed
+          const devApiKey = import.meta.env.DEV ? (apiKey || import.meta.env.VITE_GEMINI_API_KEY) : undefined;
+          
+          // Add timeout to prevent hanging (30 seconds per batch)
+          batchResults = await Promise.race([
+            batchCategorizeWithGemini(batch, devApiKey),
+            new Promise<Record<string, Category>>((_, reject) => 
+              setTimeout(() => reject(new Error('Batch timeout after 30 seconds')), 30000)
+            )
+          ]);
+          
+          const categorizedCount = Object.values(batchResults).filter(cat => cat !== 'Other').length;
+          console.log(`✅ Batch ${batchNumber}: Categorized ${categorizedCount}/${batch.length} transactions`);
+          
+          // Cache the results for future use
+          for (const [desc, category] of Object.entries(batchResults)) {
+            if (category !== 'Other') {
+              await cacheCategory(desc, category);
             }
-          });
+          }
+          
+          Object.assign(categoryMap, batchResults);
+          break; // Success, exit retry loop
+        } catch (error) {
+          retries--;
+          if (retries > 0) {
+            const waitTime = (4 - retries) * 2000; // Exponential backoff: 2s, 4s, 6s
+            console.warn(`⚠️ Batch ${batchNumber} failed, retrying in ${waitTime/1000}s... (${retries} attempts left)`, error);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+          } else {
+            console.error(`❌ Failed to enhance batch ${batchNumber} after 3 attempts:`, error);
+            // Fallback: mark all in this batch as "Other" to continue processing
+            batch.forEach(desc => {
+              if (!categoryMap[desc]) {
+                categoryMap[desc] = 'Other';
+              }
+            });
+          }
         }
       }
-    }
-    
-    // Small delay between batches to respect rate limits (reduced for large datasets)
-    if (i + batchSize < uniqueDescriptions.length) {
-      await new Promise(resolve => setTimeout(resolve, 300)); // 0.3 second delay (reduced for faster processing)
+      
+      // Small delay between batches to respect rate limits (reduced for large datasets)
+      if (i + batchSize < uncachedDescriptions.length) {
+        await new Promise(resolve => setTimeout(resolve, 300)); // 0.3 second delay (reduced for faster processing)
+      }
     }
   }
+  
+  const enhancedTransactions = [...transactions];
   
   // Update all transactions with enhanced categories
   // Create new array with new objects to ensure React detects the change

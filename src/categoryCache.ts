@@ -35,13 +35,6 @@ export async function getCachedCategory(transactionName: string): Promise<string
         .single();
       
       if (!error && data) {
-        // Update usage count (fire and forget)
-        supabase
-          .from('category_transaction')
-          .update({ usage_count: supabase.raw('usage_count + 1') })
-          .eq('transaction_name', normalizedName)
-          .then(() => {}); // Ignore errors
-        
         // Also cache in localStorage for offline use
         cacheInLocalStorage(normalizedName, data.category);
         return data.category;
