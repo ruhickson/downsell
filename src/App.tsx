@@ -314,7 +314,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     balance = parseFloat(String(rawTx[balanceKey]).replace(/,/g, ''));
   }
   
-  // Categorize transaction using rule-based matching (fast, synchronous)
+  // Initial categorization: check cache first, then rule-based matching
+  // Cache will be checked later in enhanceCategoriesWithLLM, but we can do a quick sync check here
+  // For now, use rule-based matching as initial categorization
   const category = categorizeTransactionSync(description);
   
   return {

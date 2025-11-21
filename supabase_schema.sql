@@ -1,6 +1,65 @@
 -- Supabase Tables for Downsell Analytics
 -- Run these commands in your Supabase SQL Editor
 
+-- Table for caching transaction name to category mappings
+-- This builds up a knowledge base over time, reducing AI API calls
+CREATE TABLE IF NOT EXISTS category_transaction (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  transaction_name TEXT NOT NULL UNIQUE,
+  category TEXT NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  usage_count INTEGER DEFAULT 1 -- Track how many times this mapping has been used
+);
+
+-- Index for fast lookups by transaction name
+CREATE INDEX IF NOT EXISTS idx_category_transaction_name ON category_transaction(transaction_name);
+
+-- Index for fast lookups by category
+CREATE INDEX IF NOT EXISTS idx_category_transaction_category ON category_transaction(category);
+
+-- Function to update updated_at timestamp
+CREATE OR REPLACE FUNCTION update_category_transaction_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to auto-update updated_at
+DROP TRIGGER IF EXISTS trigger_update_category_transaction_updated_at ON category_transaction;
+CREATE TRIGGER trigger_update_category_transaction_updated_at
+  BEFORE UPDATE ON category_transaction
+  FOR EACH ROW
+  EXECUTE FUNCTION update_category_transaction_updated_at();
+
+-- RLS Policies for category_transaction
+-- Allow anyone to read (for client-side lookups)
+DROP POLICY IF EXISTS "Allow public reads" ON category_transaction;
+CREATE POLICY "Allow public reads" ON category_transaction
+  FOR SELECT
+  USING (true);
+
+-- Allow service role to insert/update (for Netlify Functions)
+DROP POLICY IF EXISTS "Allow service role writes" ON category_transaction;
+CREATE POLICY "Allow service role writes" ON category_transaction
+  FOR ALL
+  USING (auth.role() = 'service_role');
+
+-- For client-side writes, we'll use a different approach (localStorage fallback)
+-- or create an anonymous insert policy if needed
+
+-- Function to increment usage count (for better performance)
+CREATE OR REPLACE FUNCTION increment_usage_count(tx_name TEXT)
+RETURNS void AS $$
+BEGIN
+  UPDATE category_transaction
+  SET usage_count = usage_count + 1
+  WHERE transaction_name = tx_name;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 -- Table for button click events
 CREATE TABLE IF NOT EXISTS button_clicks (
   id UUID DEFAULT gen_random_uuid() PRIMARY KEY,

@@ -1,7 +1,8 @@
 // Utility to enhance transaction categories using Gemini API
-// Only enhances transactions categorized as "Other" to save API calls
+// Uses a hybrid approach: check cache first, then use AI if needed
 
 import { type Category } from './categories';
+import { getCachedCategory, cacheCategory } from './categoryCache';
 
 // Transaction type (matches App.tsx)
 type Transaction = {
@@ -205,16 +206,37 @@ export async function enhanceCategoriesWithLLM(
     return transactions; // Nothing to enhance
   }
   
-  console.log(`🔄 Enhancing ${uniqueDescriptions.length} unique "Other" transactions with LLM...`);
+  console.log(`🔄 Enhancing ${uniqueDescriptions.length} unique "Other" transactions...`);
   
-  const enhancedTransactions = [...transactions];
-  const categoryMap: Record<string, Category> = {};
+  // Step 1: Check cache for known transaction names
+  const cacheResults: Record<string, Category> = {};
+  const uncachedDescriptions: string[] = [];
   
-  // Process in batches with retry logic and timeout handling
-  for (let i = 0; i < uniqueDescriptions.length; i += batchSize) {
-    const batch = uniqueDescriptions.slice(i, i + batchSize);
-    const batchNumber = Math.floor(i / batchSize) + 1;
-    const totalBatches = Math.ceil(uniqueDescriptions.length / batchSize);
+  console.log(`📚 Checking cache for ${uniqueDescriptions.length} transaction names...`);
+  for (const desc of uniqueDescriptions) {
+    const cached = await getCachedCategory(desc);
+    if (cached) {
+      cacheResults[desc] = cached as Category;
+    } else {
+      uncachedDescriptions.push(desc);
+    }
+  }
+  
+  const cachedCount = Object.keys(cacheResults).length;
+  const uncachedCount = uncachedDescriptions.length;
+  console.log(`✅ Found ${cachedCount} in cache, ${uncachedCount} need AI categorization`);
+  
+  // Step 2: Use AI only for uncached transactions
+  const categoryMap: Record<string, Category> = { ...cacheResults };
+  
+  if (uncachedDescriptions.length > 0) {
+    console.log(`🤖 Using AI to categorize ${uncachedDescriptions.length} new transaction names...`);
+  
+    // Process in batches with retry logic and timeout handling
+    for (let i = 0; i < uncachedDescriptions.length; i += batchSize) {
+      const batch = uncachedDescriptions.slice(i, i + batchSize);
+      const batchNumber = Math.floor(i / batchSize) + 1;
+      const totalBatches = Math.ceil(uncachedDescriptions.length / batchSize);
     console.log(`📦 Processing batch ${batchNumber}/${totalBatches} (${batch.length} transactions, ${uniqueDescriptions.length - i} remaining)...`);
     
     let batchResults: Record<string, Category> | null = null;
@@ -278,7 +300,10 @@ export async function enhanceCategoriesWithLLM(
     return tx; // Return unchanged transaction
   });
   
-  console.log(`✅ Enhanced ${updatedCount} transactions (${uniqueDescriptions.length} unique descriptions processed)`);
+  const totalProcessed = uniqueDescriptions.length;
+  const fromCache = cachedCount;
+  const fromAI = uncachedCount;
+  console.log(`✅ Enhanced ${updatedCount} transactions (${totalProcessed} total: ${fromCache} from cache, ${fromAI} from AI)`);
   console.log(`📊 Final category distribution:`, Object.entries(
     finalTransactions.reduce((acc, tx) => {
       const cat = tx.Category || 'Other';
