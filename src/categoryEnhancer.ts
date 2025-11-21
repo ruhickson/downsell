@@ -195,7 +195,7 @@ Only use "Other" if you truly cannot determine what the merchant/service is even
 export async function enhanceCategoriesWithLLM(
   transactions: Transaction[],
   apiKey?: string, // Used in development mode as fallback
-  batchSize: number = 20
+  batchSize: number = 50 // Increased batch size for better performance with large datasets
 ): Promise<Transaction[]> {
   // Get unique "Other" category transactions (by description to avoid duplicates)
   const otherTransactions = transactions.filter(tx => !tx.Category || tx.Category === 'Other');
@@ -223,9 +223,9 @@ export async function enhanceCategoriesWithLLM(
       console.log(`✅ Batch ${Math.floor(i / batchSize) + 1}: Categorized ${categorizedCount}/${batch.length} transactions`);
       Object.assign(categoryMap, batchResults);
       
-      // Small delay between batches to respect rate limits
+      // Small delay between batches to respect rate limits (reduced for large datasets)
       if (i + batchSize < uniqueDescriptions.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+        await new Promise(resolve => setTimeout(resolve, 500)); // 0.5 second delay (reduced for faster processing)
       }
     } catch (error) {
       console.error(`❌ Failed to enhance batch ${i}-${i + batchSize}:`, error);

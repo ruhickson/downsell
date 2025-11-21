@@ -16,4 +16,9 @@
 [functions]
   # Environment variables are automatically available to functions
   # Set them in Netlify dashboard: Site settings > Environment variables
+  node_bundler = "esbuild"
+  
+[[functions]]
+  path = "netlify/functions/categorize-transactions.ts"
+  timeout = 60
 

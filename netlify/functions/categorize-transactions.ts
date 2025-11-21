@@ -80,7 +80,7 @@ Only use "Other" if you truly cannot determine what the merchant/service is even
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.2, // Lower temperature for more consistent categorization
-          maxOutputTokens: 2000, // Increased for larger batches
+          maxOutputTokens: 4000, // Increased for larger batches (up to 50 transactions)
         },
       }),
     });
