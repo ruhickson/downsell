@@ -41,13 +41,24 @@ export const handler = async (event: any) => {
     const categoriesList = categories.join(', ');
     const descriptionsList = descriptions.map((desc: string, idx: number) => `${idx + 1}. "${desc}"`).join('\n');
     
-    const prompt = `Categorize these transaction descriptions into exactly one of these categories: ${categoriesList}
+    const prompt = `You are a financial transaction categorizer. Categorize these transaction descriptions into exactly one of these categories: ${categoriesList}
 
 Transactions:
 ${descriptionsList}
 
-Return a JSON object mapping each transaction number to its category. Format: {"1": "CategoryName", "2": "CategoryName", ...}
-If unsure about any transaction, use "Other" for that transaction.`;
+IMPORTANT: Return ONLY a valid JSON object mapping each transaction number to its category. Do not include any explanation or text outside the JSON.
+Format: {"1": "CategoryName", "2": "CategoryName", ...}
+
+Examples:
+- "NETFLIX" → "Entertainment"
+- "STARBUCKS" → "Coffee & Snacks"
+- "UBER" → "Transportation"
+- "AMAZON" → "Shopping"
+- "GAS STATION" → "Transportation"
+
+If you are unsure about a transaction, use "Other" for that transaction.`;
+    
+    console.log(`Sending ${descriptions.length} descriptions to Gemini with prompt length: ${prompt.length}`);
 
     // Call Gemini API
     const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -60,7 +71,7 @@ If unsure about any transaction, use "Other" for that transaction.`;
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
           temperature: 0.3, // Lower temperature for more consistent categorization
-          maxOutputTokens: 500,
+          maxOutputTokens: 2000, // Increased for larger batches
         },
       }),
     });
@@ -78,17 +89,27 @@ If unsure about any transaction, use "Other" for that transaction.`;
     const data = await response.json();
     const geminiResponse = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
+    console.log('Gemini response (first 500 chars):', geminiResponse.substring(0, 500));
+    
     // Try to extract JSON from response
     const jsonMatch = geminiResponse.match(/\{[\s\S]*\}/);
     if (jsonMatch) {
       try {
         const result = JSON.parse(jsonMatch[0]);
+        console.log('Parsed JSON result:', JSON.stringify(result).substring(0, 500));
+        
         const categoryMap: Record<string, string> = {};
         
         descriptions.forEach((desc: string, idx: number) => {
           const category = result[String(idx + 1)] || result[idx + 1] || 'Other';
           categoryMap[desc] = category;
+          if (category !== 'Other') {
+            console.log(`  ✅ "${desc}" → ${category}`);
+          }
         });
+        
+        const nonOtherCount = Object.values(categoryMap).filter(cat => cat !== 'Other').length;
+        console.log(`Successfully categorized ${nonOtherCount}/${descriptions.length} as non-Other`);
         
         return {
           statusCode: 200,
@@ -98,6 +119,8 @@ If unsure about any transaction, use "Other" for that transaction.`;
       } catch (parseError) {
         console.error('JSON parsing error:', parseError, 'Response:', jsonMatch[0]);
       }
+    } else {
+      console.error('No JSON found in response. Full response:', geminiResponse);
     }
 
     // Fallback: return all as "Other"
