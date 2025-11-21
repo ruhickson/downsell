@@ -1,11 +1,6 @@
 import React from 'react';
 import { getCategoryColor, type Category } from './categories';
 
-type SankeyData = {
-  nodes: Array<{ name: string; value: number; color: string }>;
-  links: Array<{ source: number; target: number; value: number }>;
-};
-
 interface SankeyDiagramProps {
   data: Record<string, number>; // Category -> total spending
 }
