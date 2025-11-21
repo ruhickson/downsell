@@ -5,28 +5,32 @@
       "aib": "Posted Transactions Date",
       "boi": "Date",
       "n26": "Booking Date",
-      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB and BOI use date format (DD/MM/YYYY). N26 uses ISO date format (YYYY-MM-DD). Use Completed Date for Revolut, Posted Transactions Date for AIB, Date for BOI, Booking Date for N26."
+      "bunq": "Date",
+      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB and BOI use date format (DD/MM/YYYY). N26 and BUNQ use ISO date format (YYYY-MM-DD). Use Completed Date for Revolut, Posted Transactions Date for AIB, Date for BOI/BUNQ, Booking Date for N26."
     },
     "description": {
       "revolut": "Description",
       "aib": ["Description1", "Description2", "Description3"],
       "boi": "Details",
       "n26": "Partner Name",
-      "notes": "For AIB, use only Description1 (prefixes removed). For BOI, use Details field directly. For N26, use Partner Name field directly."
+      "bunq": "Name",
+      "notes": "For AIB, use only Description1 (prefixes removed). For BOI, use Details field directly. For N26, use Partner Name field directly. For BUNQ, use Name field directly."
     },
     "amount": {
       "revolut": "Amount",
       "aib": ["Debit Amount", "Credit Amount"],
       "boi": ["Debit", "Credit"],
       "n26": "Amount (EUR)",
-      "notes": "Revolut and N26 use single Amount field (negative for debits, positive for credits). AIB and BOI use separate Debit and Credit fields (one will be empty). For AIB/BOI: if Debit exists, use negative value; if Credit exists, use positive value. Remove commas from amounts."
+      "bunq": "Amount",
+      "notes": "Revolut, N26, and BUNQ use single Amount field (negative for debits, positive for credits). AIB and BOI use separate Debit and Credit fields (one will be empty). For AIB/BOI: if Debit exists, use negative value; if Credit exists, use positive value. Remove commas from amounts."
     },
     "currency": {
       "revolut": "Currency",
       "aib": "Posted Currency",
       "boi": "EUR",
       "n26": "EUR",
-      "notes": "Revolut and AIB have explicit currency fields. BOI and N26 typically use EUR (default). N26 exports show amounts in EUR in 'Amount (EUR)' field."
+      "bunq": "EUR",
+      "notes": "Revolut and AIB have explicit currency fields. BOI, N26, and BUNQ typically use EUR (default). N26 exports show amounts in EUR in 'Amount (EUR)' field."
     },
     "balance": {
       "revolut": "Balance",
@@ -79,6 +83,17 @@
       ],
       "file_pattern": "*.csv",
       "detection_notes": "N26 format has 'Booking Date', 'Value Date', 'Partner Name', 'Amount (EUR)' columns. Type column includes values like 'Presentment', 'Debit Transfer', 'Credit Transfer', 'Direct Debit', 'Fee'."
+    },
+    "bunq": {
+      "required_columns": ["Date", "Interest Date", "Amount", "Account", "Name", "Description"],
+      "unique_identifiers": [
+        "Date",
+        "Interest Date",
+        "Amount",
+        "Name"
+      ],
+      "file_pattern": "*.csv",
+      "detection_notes": "BUNQ format has 'Date', 'Interest Date', 'Amount', 'Account', 'Counterparty', 'Name', 'Description' columns. Amount is signed (negative for debits, positive for credits). Dates are in ISO format (YYYY-MM-DD)."
     }
   },
   "processing_notes": {
@@ -105,6 +120,12 @@
       "amount_parsing": "Amount (EUR) is already signed (negative for debits, positive for credits). Use as-is.",
       "description_parsing": "Use Partner Name field directly. Trim whitespace.",
       "filtering": "Filter out internal transfers where Partner Name is 'Main Account' and Type is 'Debit Transfer' or 'Credit Transfer' for subscription analysis."
+    },
+    "bunq": {
+      "date_parsing": "Parse as ISO date format: YYYY-MM-DD. Use Date field.",
+      "amount_parsing": "Amount is already signed (negative for debits, positive for credits). Use as-is.",
+      "description_parsing": "Use Name field directly. Trim whitespace.",
+      "filtering": "No explicit transaction type field. Filter based on description patterns if needed."
     }
   }
 }

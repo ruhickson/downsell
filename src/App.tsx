@@ -47,8 +47,8 @@ type Transaction = {
   Date: string;
   Currency: string;
   Balance?: number;
-  BankSource: string; // 'AIB', 'Revolut', 'BOI', or 'N26'
-  Account: string; // 'AIB-1', 'REV-1', 'REV-2', etc.
+  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', or 'BUNQ'
+  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', etc.
   Category?: string; // Transaction category (e.g., 'Entertainment', 'Food & Dining')
   OriginalData: RawTransaction; // Keep original for reference
 };
@@ -126,7 +126,7 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
 function normalizeTransaction(rawTx: RawTransaction, account: string): Transaction | null {
   const keys = Object.keys(rawTx);
   
-  // Detect bank format (check in order: Revolut, AIB, BOI, N26)
+  // Detect bank format (check in order: Revolut, AIB, BOI, N26, BUNQ)
   const isRevolut = keys.some(k => 
     k.includes('Type') && 
     (k.includes('Started Date') || k.includes('Completed Date'))
@@ -147,6 +147,14 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     keys.some(k => k.trim() === 'Value Date' || k.includes('Value Date')) &&
     keys.some(k => k.trim() === 'Partner Name' || k.includes('Partner Name')) &&
     keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)'))
+  );
+  const isBUNQ = !isRevolut && !isAIB && !isBOI && !isN26 && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => k.trim() === 'Interest Date' || k.includes('Interest Date')) &&
+    keys.some(k => k.trim() === 'Amount' || k.includes('Amount')) &&
+    keys.some(k => k.trim() === 'Account' || k.includes('Account')) &&
+    keys.some(k => k.trim() === 'Name' || k.includes('Name')) &&
+    keys.some(k => k.trim() === 'Description' || k.includes('Description'))
   );
   
   // Extract description
@@ -174,6 +182,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // N26: use Partner Name field directly
     const partnerNameKey = keys.find(k => k.trim() === 'Partner Name' || k.includes('Partner Name'));
     description = partnerNameKey ? String(rawTx[partnerNameKey] || '').trim() : '';
+  } else if (isBUNQ) {
+    // BUNQ: use Name field directly
+    const nameKey = keys.find(k => k.trim() === 'Name' || k.includes('Name'));
+    description = nameKey ? String(rawTx[nameKey] || '').trim() : '';
   } else {
     // Revolut: single Description field
     description = rawTx.Description || rawTx.description || '';
@@ -215,6 +227,12 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     if (amountKey) {
       amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
     }
+  } else if (isBUNQ) {
+    // BUNQ: use Amount field (already signed, negative for debits, positive for credits)
+    const amountKey = keys.find(k => k.trim() === 'Amount' || k.includes('Amount'));
+    if (amountKey) {
+      amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
+    }
   } else {
     // Revolut: single Amount field (already signed)
     amount = parseFloat(rawTx.Amount || rawTx.amount || '0');
@@ -238,6 +256,15 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // N26: use Type field (Presentment, Debit Transfer, Credit Transfer, Direct Debit, Fee, etc.)
     const typeKey = keys.find(k => k.trim() === 'Type' || k.includes('Type'));
     type = typeKey ? String(rawTx[typeKey] || '').toUpperCase() : '';
+  } else if (isBUNQ) {
+    // BUNQ doesn't have explicit transaction type - infer from Amount sign
+    if (amount < 0) {
+      type = 'DEBIT';
+    } else if (amount > 0) {
+      type = 'CREDIT';
+    } else {
+      type = 'UNKNOWN';
+    }
   } else {
     type = (rawTx.Type || rawTx.type || '').toUpperCase();
   }
@@ -283,6 +310,13 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
       dateStr = String(rawTx[dateKey] || '').trim();
       // N26 dates are already in YYYY-MM-DD format
     }
+  } else if (isBUNQ) {
+    // BUNQ: use Date field (YYYY-MM-DD format, already ISO)
+    const dateKey = keys.find(k => k.trim() === 'Date' || k.includes('Date'));
+    if (dateKey) {
+      dateStr = String(rawTx[dateKey] || '').trim();
+      // BUNQ dates are already in YYYY-MM-DD format
+    }
   } else {
     // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
     dateStr = (rawTx['Completed Date'] || rawTx['Started Date'] || rawTx.Date || rawTx.date || '').toString();
@@ -302,6 +336,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     currency = 'EUR';
   } else if (isN26) {
     // N26 exports show amounts in EUR in 'Amount (EUR)' field - default to EUR
+    currency = 'EUR';
+  } else if (isBUNQ) {
+    // BUNQ doesn't have explicit currency field - default to EUR
     currency = 'EUR';
   } else {
     currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
@@ -326,7 +363,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut')),
+    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : 'Revolut'))),
     Account: account,
     Category: category,
     OriginalData: rawTx
@@ -493,7 +530,7 @@ const App: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
-  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0 });
+  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
   const isEnhancingRef = React.useRef<boolean>(false);
   const lastDataLengthRef = React.useRef<number>(0);
@@ -643,7 +680,17 @@ const App: React.FC = () => {
            keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)')))
         );
         
-        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut'));
+        // Check for BUNQ (must have: Date, Interest Date, Amount, Account, Name, Description)
+        const isBUNQ = !isRevolut && !isAIB && !isBOI && !isN26 && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => k.trim() === 'Interest Date' || k.includes('Interest Date')) &&
+          keys.some(k => k.trim() === 'Amount' || k.includes('Amount')) &&
+          keys.some(k => k.trim() === 'Account' || k.includes('Account')) &&
+          keys.some(k => k.trim() === 'Name' || k.includes('Name')) &&
+          keys.some(k => k.trim() === 'Description' || k.includes('Description'))
+        );
+        
+        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : 'Revolut')));
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -655,6 +702,8 @@ const App: React.FC = () => {
             ? `BOI-${newCounters[bankType]}`
             : bankType === 'N26'
             ? `N26-${newCounters[bankType]}`
+            : bankType === 'BUNQ'
+            ? `BUN-${newCounters[bankType]}`
             : `REV-${newCounters[bankType]}`;
           
           // Normalize all transactions with account identifier
@@ -1473,6 +1522,18 @@ const App: React.FC = () => {
                     }}>
                       <span style={{ fontSize: '1.2rem' }}>💳</span>
                       <strong style={{ color: 'white' }}>N26</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🏪</span>
+                      <strong style={{ color: 'white' }}>Bunq</strong>
                     </div>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>

@@ -1,0 +1,65 @@
+{
+  "bank": "BUNQ",
+  "file_pattern": "*.csv",
+  "columns": [
+    {
+      "name": "Date",
+      "type": "date",
+      "format": "YYYY-MM-DD",
+      "description": "Transaction date",
+      "required": true,
+      "examples": ["2025-07-15"]
+    },
+    {
+      "name": "Interest Date",
+      "type": "date",
+      "format": "YYYY-MM-DD",
+      "description": "Interest calculation date",
+      "required": true,
+      "examples": ["2025-07-15"]
+    },
+    {
+      "name": "Amount",
+      "type": "decimal",
+      "description": "Transaction amount (negative for debits, positive for credits)",
+      "required": true,
+      "examples": ["-10.00", "50.00"]
+    },
+    {
+      "name": "Account",
+      "type": "string",
+      "description": "Account IBAN",
+      "required": true,
+      "examples": ["IE63BUNQ99038520238119"]
+    },
+    {
+      "name": "Counterparty",
+      "type": "string",
+      "description": "Counterparty IBAN (may be empty)",
+      "required": false,
+      "examples": ["NL46BUNQ2120678324", ""]
+    },
+    {
+      "name": "Name",
+      "type": "string",
+      "description": "Merchant or counterparty name",
+      "required": true,
+      "examples": ["Adyen Merchant Payout EUR", "Solana", "SQ *MELLON'S SHOP & DE"]
+    },
+    {
+      "name": "Description",
+      "type": "string",
+      "description": "Transaction description",
+      "required": true,
+      "examples": ["Top Up by Apple Pay from Apple Pay Top Up", "Purchase of 0.069660000000000 Solana.", "SQ *MELLON'S SHOP & DE Dublin 4, IE"]
+    }
+  ],
+  "notes": [
+    "Amount is negative for outgoing transactions (debits)",
+    "Amount is positive for incoming transactions (credits)",
+    "Dates are in ISO format: YYYY-MM-DD",
+    "Name field contains merchant names or transaction details",
+    "Description field provides additional transaction context"
+  ]
+}
+
