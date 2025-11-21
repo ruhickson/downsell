@@ -19,7 +19,7 @@ export const handler = async (event: any) => {
 
   try {
     const eventData = JSON.parse(event.body || '{}');
-    const { buttonName, location, row_number, amount, status, method, file_count, ...otherContext } = eventData;
+    const { buttonName, location, row_number, amount, status, method, file_count, subscription, category, ...otherContext } = eventData;
     const timestamp = new Date().toISOString();
     const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
     const userAgent = event.headers['user-agent'] || 'unknown';
@@ -31,6 +31,8 @@ export const handler = async (event: any) => {
       location: location || 'unknown',
       row_number: row_number || null,
       amount: amount || null,
+      subscription: subscription || null,
+      category: category || null,
       status: status || null,
       method: method || null,
       file_count: file_count || null,
@@ -41,11 +43,16 @@ export const handler = async (event: any) => {
     }));
 
     // Also log a searchable line for quick filtering
-    console.log(`[BUTTON_CLICK] ${buttonName} | Location: ${location || 'unknown'} | Row: ${row_number || 'N/A'} | Amount: ${amount || 'N/A'} | Status: ${status || 'N/A'}`);
+    console.log(`[BUTTON_CLICK] ${buttonName} | Location: ${location || 'unknown'} | Row: ${row_number || 'N/A'} | Amount: ${amount || 'N/A'} | Subscription: ${subscription || 'N/A'} | Category: ${category || 'N/A'}`);
 
     // Save to Supabase if configured
     if (supabase) {
       try {
+        // Build context object with subscription and category
+        const contextData: any = { ...otherContext };
+        if (subscription) contextData.subscription = subscription;
+        if (category) contextData.category = category;
+        
         const { error } = await supabase
           .from('button_clicks')
           .insert({
@@ -56,7 +63,7 @@ export const handler = async (event: any) => {
             status: status || null,
             method: method || null,
             file_count: file_count || null,
-            context: Object.keys(otherContext).length > 0 ? otherContext : null,
+            context: Object.keys(contextData).length > 0 ? contextData : null,
             timestamp: timestamp,
             ip_address: ip,
             user_agent: userAgent,

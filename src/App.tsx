@@ -17,6 +17,8 @@ import {
 import './App.css';
 import jsPDF from 'jspdf';
 import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
+import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
+import { enhanceCategoriesWithLLM } from './categoryEnhancer';
 
 ChartJS.register(
   CategoryScale,
@@ -44,8 +46,9 @@ type Transaction = {
   Date: string;
   Currency: string;
   Balance?: number;
-  BankSource: string; // 'AIB' or 'Revolut'
+  BankSource: string; // 'AIB', 'Revolut', 'BOI', or 'N26'
   Account: string; // 'AIB-1', 'REV-1', 'REV-2', etc.
+  Category?: string; // Transaction category (e.g., 'Entertainment', 'Food & Dining')
   OriginalData: RawTransaction; // Keep original for reference
 };
 
@@ -310,6 +313,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     balance = parseFloat(String(rawTx[balanceKey]).replace(/,/g, ''));
   }
   
+  // Categorize transaction using rule-based matching (fast, synchronous)
+  const category = categorizeTransactionSync(description);
+  
   return {
     Description: description,
     Amount: amount,
@@ -319,6 +325,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Balance: balance,
     BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut')),
     Account: account,
+    Category: category,
     OriginalData: rawTx
   };
 }
@@ -485,10 +492,13 @@ const App: React.FC = () => {
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
   const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const isEnhancingRef = React.useRef<boolean>(false);
+  const lastDataLengthRef = React.useRef<number>(0);
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
   const [transactionSearch, setTransactionSearch] = useState<string>('');
   const [accountFilter, setAccountFilter] = useState<string>('All');
+  const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [amountFilterType, setAmountFilterType] = useState<string>('none');
   const [amountFilterValue, setAmountFilterValue] = useState<string>('');
   const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(false);
@@ -516,6 +526,72 @@ const App: React.FC = () => {
   useEffect(() => {
     trackPageView(activeTab);
   }, [activeTab]);
+
+  // Helper function to enhance "Other" categories with LLM
+  const enhanceOtherCategories = async (dataToEnhance?: Transaction[]) => {
+    // Prevent multiple simultaneous enhancements
+    if (isEnhancingRef.current) {
+      console.log('⏸️ Enhancement already in progress, skipping...');
+      return;
+    }
+    
+    isEnhancingRef.current = true;
+    console.log('🔄 Starting category enhancement with Gemini (via server)...');
+    
+    // Use provided data or current state
+    const currentData = dataToEnhance || csvData;
+    const otherCount = currentData.filter(tx => !tx.Category || tx.Category === 'Other').length;
+    console.log(`📊 Found ${otherCount} transactions in "Other" category to enhance`);
+    
+    if (otherCount === 0) {
+      console.log('✅ No transactions to enhance');
+      isEnhancingRef.current = false;
+      return currentData;
+    }
+    
+    try {
+      // Enhance categories (pass API key for development fallback)
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const enhanced = await enhanceCategoriesWithLLM(currentData, apiKey);
+      const enhancedCount = enhanced.filter(tx => tx.Category && tx.Category !== 'Other').length - 
+                           currentData.filter(tx => tx.Category && tx.Category !== 'Other').length;
+      console.log(`✅ Enhanced ${enhancedCount} transactions with LLM`);
+      
+      // Update state with enhanced data
+      setCsvData(enhanced);
+      
+      // Recalculate subscriptions with new categories
+      const updatedSubscriptions = analyzeBankStatement(enhanced);
+      setSubscriptions(updatedSubscriptions);
+      
+      console.log(`✅ State updated: ${enhanced.length} transactions, ${updatedSubscriptions.length} subscriptions`);
+      isEnhancingRef.current = false;
+      return enhanced;
+    } catch (err) {
+      console.error('❌ Failed to enhance categories:', err);
+      isEnhancingRef.current = false;
+      return currentData;
+    }
+  };
+
+  // Auto-enhance when new data is added (but not on initial load or after enhancement)
+  React.useEffect(() => {
+    // Only enhance if data length increased (new upload) and we're not already enhancing
+    if (csvData.length > lastDataLengthRef.current && csvData.length > 0 && !isEnhancingRef.current) {
+      const previousLength = lastDataLengthRef.current;
+      lastDataLengthRef.current = csvData.length;
+      
+      // Wait a bit for state to stabilize, then enhance with current data
+      const timer = setTimeout(() => {
+        if (!isEnhancingRef.current && csvData.length > previousLength) {
+          enhanceOtherCategories(csvData);
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (csvData.length > 0) {
+      lastDataLengthRef.current = csvData.length;
+    }
+  }, [csvData.length]);
 
   // Process a single CSV file and merge with existing data
   const processCSVFile = (file: File, mergeWithExisting: boolean = true, onComplete?: () => void): Promise<void> => {
@@ -640,9 +716,20 @@ const App: React.FC = () => {
     trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'file_input', file_count: fileArray.length });
     
     // Process files sequentially to avoid state conflicts
+    let allMergedData: Transaction[] = [...csvData];
     for (let i = 0; i < fileArray.length; i++) {
       await new Promise<void>((resolve) => {
-        processCSVFile(fileArray[i], i > 0 || csvData.length > 0, resolve);
+        // Get the merged data after processing
+        processCSVFile(fileArray[i], i > 0 || csvData.length > 0, () => {
+          // Read the updated state after a short delay to ensure state has updated
+          setTimeout(() => {
+            setCsvData(currentData => {
+              allMergedData = currentData;
+              resolve();
+              return currentData;
+            });
+          }, 100);
+        });
       });
     }
     
@@ -650,6 +737,7 @@ const App: React.FC = () => {
     if (inputRef.current) {
       inputRef.current.value = '';
     }
+    // Enhancement will be triggered by useEffect when csvData updates
   };
 
   const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
@@ -681,6 +769,7 @@ const App: React.FC = () => {
     for (let i = 0; i < fileArray.length; i++) {
       await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
     }
+    // Enhancement will be triggered by useEffect when csvData updates
   };
 
   const handleClick = () => {
@@ -1806,25 +1895,52 @@ const App: React.FC = () => {
                           const dowLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                           return (
                             <div className="subscription-card" key={sub.description} style={{ position: 'relative' }}>
-                              {/* Account badge */}
+                              {/* Category and Account badges (right-aligned) */}
                               {(() => {
                                 const raw = subscriptionRawData[sub.description] || { accounts: new Set<string>() };
                                 const accounts = Array.from(raw.accounts).sort();
-                                return accounts.length > 0 && (
+                                const firstTx = csvData.find(tx => tx.Description === sub.description);
+                                const category = firstTx?.Category || 'Other';
+                                const categoryColor = getCategoryColor(category as Category);
+                                
+                                return (
                                   <div style={{
                                     position: 'absolute',
                                     top: '1rem',
                                     right: '1rem',
-                                    padding: '0.25rem 0.75rem',
-                                    borderRadius: '6px',
-                                    fontSize: '0.85rem',
-                                    fontWeight: 600,
-                                    background: 'rgba(247, 37, 133, 0.2)',
-                                    color: '#f72585',
-                                    border: '1px solid #f72585',
-                                    fontFamily: 'monospace'
+                                    display: 'flex',
+                                    gap: '0.5rem',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    justifyContent: 'flex-end'
                                   }}>
-                                    {accounts.join(', ')}
+                                    {/* Category badge */}
+                                    <div style={{
+                                      padding: '0.25rem 0.75rem',
+                                      borderRadius: '6px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 600,
+                                      background: `${categoryColor}20`,
+                                      color: categoryColor,
+                                      border: `1px solid ${categoryColor}`,
+                                    }}>
+                                      {category}
+                                    </div>
+                                    {/* Account badge */}
+                                    {accounts.length > 0 && (
+                                      <div style={{
+                                        padding: '0.25rem 0.75rem',
+                                        borderRadius: '6px',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                        background: 'rgba(247, 37, 133, 0.2)',
+                                        color: '#f72585',
+                                        border: '1px solid #f72585',
+                                        fontFamily: 'monospace'
+                                      }}>
+                                        {accounts.join(', ')}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })()}
@@ -2081,6 +2197,7 @@ const App: React.FC = () => {
                           <thead>
                             <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
                               <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Name</th>
+                              <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Category</th>
                               <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Total Spend</th>
                               <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Monthly Spend</th>
                               <th style={{ padding: '1rem', textAlign: 'center', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Actions</th>
@@ -2097,9 +2214,25 @@ const App: React.FC = () => {
                                     : -sub.average;
                               const rowNumber = index + 1; // 1-indexed row number
                               const totalAmount = -sub.total; // Total amount (negative because it's a debit)
+                              const firstTx = csvData.find(tx => tx.Description === sub.description);
+                              const category = firstTx?.Category || 'Other';
+                              const categoryColor = getCategoryColor(category as Category);
                               return (
                                 <tr key={sub.description} style={{ borderBottom: index < highConfidenceSubscriptions.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
                                   <td style={{ padding: '1rem', color: 'white' }}>{sub.description}</td>
+                                  <td style={{ padding: '1rem' }}>
+                                    <span style={{
+                                      padding: '0.25rem 0.5rem',
+                                      borderRadius: '4px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 500,
+                                      background: `${categoryColor}20`,
+                                      color: categoryColor,
+                                      border: `1px solid ${categoryColor}`,
+                                    }}>
+                                      {category}
+                                    </span>
+                                  </td>
                                   <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{monthlySpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td style={{ padding: '1rem', textAlign: 'center' }}>
@@ -2110,7 +2243,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="optimize-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block' }}
-                                        onClick={() => trackButtonClick('Switch Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount })}
+                                        onClick={() => trackButtonClick('Switch Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount, subscription: sub.description, category: category })}
                                       >
                                         Switch
                                       </a>
@@ -2120,7 +2253,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="alt-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block', background: 'rgba(247, 37, 133, 0.2)', color: '#f72585', border: '1px solid #f72585' }}
-                                        onClick={() => trackButtonClick('Cancel Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount })}
+                                        onClick={() => trackButtonClick('Cancel Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount, subscription: sub.description, category: category })}
                                       >
                                         Cancel
                                       </a>
@@ -2213,6 +2346,32 @@ const App: React.FC = () => {
                           <option value="Subscription" style={{ background: '#2a3b4c', color: 'white' }}>Subscriptions Only</option>
                         </select>
                       </div>
+                      <div style={{ flex: '1', minWidth: '200px' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
+                          Filter by Category
+                        </label>
+                        <select
+                          value={categoryFilter}
+                          onChange={(e) => setCategoryFilter(e.target.value)}
+                          className="transaction-filter-select"
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '1rem',
+                            fontFamily: 'Inter, sans-serif',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="All" style={{ background: '#2a3b4c', color: 'white' }}>All Categories</option>
+                          {Array.from(new Set(csvData.map(tx => tx.Category || 'Other').filter(cat => cat))).sort().map(category => (
+                            <option key={category} value={category} style={{ background: '#2a3b4c', color: 'white' }}>{category}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div style={{ flex: '2', minWidth: '250px' }}>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
                           Search
@@ -2293,6 +2452,7 @@ const App: React.FC = () => {
                           <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Date</th>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Account</th>
+                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Category</th>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Description</th>
                             <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Amount</th>
                             <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Balance</th>
@@ -2320,6 +2480,14 @@ const App: React.FC = () => {
                         if (transactionFilter === 'Credit' && !isCredit) return false;
                         if (transactionFilter === 'Debit' && !isDebit) return false;
                         if (transactionFilter === 'Subscription' && !isSubscription) return false;
+                        
+                        // Apply category filter
+                        if (categoryFilter !== 'All') {
+                          const txCategory = transaction.Category || 'Other';
+                          if (txCategory !== categoryFilter) {
+                            return false;
+                          }
+                        }
                         
                         // Apply search filter
                         if (transactionSearch && !transaction.Description.toLowerCase().includes(transactionSearch.toLowerCase())) {
@@ -2380,6 +2548,25 @@ const App: React.FC = () => {
                               >
                                 <td style={{ padding: '1rem', color: 'white' }}>{formattedDate}</td>
                                 <td style={{ padding: '1rem', color: 'white', fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 500 }}>{transaction.Account}</td>
+                                <td style={{ padding: '1rem' }}>
+                                  {(() => {
+                                    const category = transaction.Category || 'Other';
+                                    const categoryColor = getCategoryColor(category as Category);
+                                    return (
+                                      <span style={{
+                                        padding: '0.25rem 0.5rem',
+                                        borderRadius: '4px',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 500,
+                                        background: `${categoryColor}20`,
+                                        color: categoryColor,
+                                        border: `1px solid ${categoryColor}`,
+                                      }}>
+                                        {category}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
                                 <td style={{ padding: '1rem', color: 'white' }}>{transaction.Description}</td>
                                 <td style={{ 
                                   padding: '1rem', 
