@@ -37,28 +37,37 @@ export const handler = async (event: any) => {
       };
     }
 
-    // Build prompt for batch categorization
+    // Build prompt for batch categorization with web search reasoning
     const categoriesList = categories.join(', ');
     const descriptionsList = descriptions.map((desc: string, idx: number) => `${idx + 1}. "${desc}"`).join('\n');
     
-    const prompt = `You are a financial transaction categorizer. Categorize these transaction descriptions into exactly one of these categories: ${categoriesList}
+    const prompt = `You are a financial transaction categorizer. For each transaction description, use web search knowledge to understand what the merchant or service is, then categorize it.
 
-Transactions:
+Available categories: ${categoriesList}
+
+Transactions to categorize:
 ${descriptionsList}
+
+For each transaction:
+1. Use your web search knowledge to understand what the merchant/service is
+2. Categorize it into the most appropriate category from the list above
+3. Use common sense: "Hairdressing" → "Health & Beauty", "Tesco" → "Groceries", "Netflix" → "Entertainment"
 
 IMPORTANT: Return ONLY a valid JSON object mapping each transaction number to its category. Do not include any explanation or text outside the JSON.
 Format: {"1": "CategoryName", "2": "CategoryName", ...}
 
-Examples:
+Examples of good categorization:
+- "HAIRDRESSING SALON" → "Health & Beauty"
+- "TESCO STORES" → "Groceries"
 - "NETFLIX" → "Entertainment"
 - "STARBUCKS" → "Coffee & Snacks"
 - "UBER" → "Transportation"
 - "AMAZON" → "Shopping"
-- "GAS STATION" → "Transportation"
+- "BP GAS STATION" → "Transportation"
 
-If you are unsure about a transaction, use "Other" for that transaction.`;
+Only use "Other" if you truly cannot determine what the merchant/service is even after considering web search knowledge.`;
     
-    console.log(`Sending ${descriptions.length} descriptions to Gemini with prompt length: ${prompt.length}`);
+    console.log(`Sending ${descriptions.length} descriptions to Gemini with web search-based categorization`);
 
     // Call Gemini API
     const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
@@ -70,9 +79,12 @@ If you are unsure about a transaction, use "Other" for that transaction.`;
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.3, // Lower temperature for more consistent categorization
+          temperature: 0.2, // Lower temperature for more consistent categorization
           maxOutputTokens: 2000, // Increased for larger batches
         },
+        tools: [{
+          googleSearch: {} // Enable Google Search grounding for web search
+        }],
       }),
     });
 

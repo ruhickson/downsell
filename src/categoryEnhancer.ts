@@ -94,13 +94,31 @@ async function batchCategorizeWithGemini(
       const categoriesList = categories.join(', ');
       const descriptionsList = descriptions.map((desc, idx) => `${idx + 1}. "${desc}"`).join('\n');
       
-      const prompt = `Categorize these transaction descriptions into exactly one of these categories: ${categoriesList}
+      const prompt = `You are a financial transaction categorizer. For each transaction description, use web search knowledge to understand what the merchant or service is, then categorize it.
 
-Transactions:
+Available categories: ${categoriesList}
+
+Transactions to categorize:
 ${descriptionsList}
 
-Return a JSON object mapping each transaction number to its category. Format: {"1": "CategoryName", "2": "CategoryName", ...}
-If unsure about any transaction, use "Other" for that transaction.`;
+For each transaction:
+1. Use your web search knowledge to understand what the merchant/service is
+2. Categorize it into the most appropriate category from the list above
+3. Use common sense: "Hairdressing" → "Health & Beauty", "Tesco" → "Groceries", "Netflix" → "Entertainment"
+
+IMPORTANT: Return ONLY a valid JSON object mapping each transaction number to its category. Do not include any explanation or text outside the JSON.
+Format: {"1": "CategoryName", "2": "CategoryName", ...}
+
+Examples of good categorization:
+- "HAIRDRESSING SALON" → "Health & Beauty"
+- "TESCO STORES" → "Groceries"
+- "NETFLIX" → "Entertainment"
+- "STARBUCKS" → "Coffee & Snacks"
+- "UBER" → "Transportation"
+- "AMAZON" → "Shopping"
+- "BP GAS STATION" → "Transportation"
+
+Only use "Other" if you truly cannot determine what the merchant/service is even after considering web search knowledge.`;
 
       const url = `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
       const response = await fetch(url, {
@@ -111,9 +129,12 @@ If unsure about any transaction, use "Other" for that transaction.`;
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.3,
-            maxOutputTokens: 500,
+            temperature: 0.2,
+            maxOutputTokens: 2000,
           },
+          tools: [{
+            googleSearch: {} // Enable Google Search grounding for web search
+          }],
         }),
       });
 
