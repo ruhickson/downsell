@@ -18,7 +18,6 @@
   # Set them in Netlify dashboard: Site settings > Environment variables
   node_bundler = "esbuild"
   
-[[functions]]
-  path = "netlify/functions/categorize-transactions.ts"
+[functions."netlify/functions/categorize-transactions.ts"]
   timeout = 60
 
