@@ -34,6 +34,9 @@ CREATE TRIGGER trigger_update_category_transaction_updated_at
   FOR EACH ROW
   EXECUTE FUNCTION update_category_transaction_updated_at();
 
+-- Enable RLS for category_transaction
+ALTER TABLE category_transaction ENABLE ROW LEVEL SECURITY;
+
 -- RLS Policies for category_transaction
 -- Allow anyone to read (for client-side lookups)
 DROP POLICY IF EXISTS "Allow public reads" ON category_transaction;
@@ -41,14 +44,18 @@ CREATE POLICY "Allow public reads" ON category_transaction
   FOR SELECT
   USING (true);
 
--- Allow service role to insert/update (for Netlify Functions)
-DROP POLICY IF EXISTS "Allow service role writes" ON category_transaction;
-CREATE POLICY "Allow service role writes" ON category_transaction
-  FOR ALL
-  USING (auth.role() = 'service_role');
+-- Allow anyone to insert/update (for building shared knowledge base)
+-- This allows both client-side and server-side caching
+DROP POLICY IF EXISTS "Allow public writes" ON category_transaction;
+CREATE POLICY "Allow public writes" ON category_transaction
+  FOR INSERT
+  WITH CHECK (true);
 
--- For client-side writes, we'll use a different approach (localStorage fallback)
--- or create an anonymous insert policy if needed
+DROP POLICY IF EXISTS "Allow public updates" ON category_transaction;
+CREATE POLICY "Allow public updates" ON category_transaction
+  FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
 
 -- Function to increment usage count (for better performance)
 CREATE OR REPLACE FUNCTION increment_usage_count(tx_name TEXT)
