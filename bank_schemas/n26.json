@@ -1,0 +1,99 @@
+{
+  "bank": "N26",
+  "file_pattern": "*.csv",
+  "columns": [
+    {
+      "name": "Booking Date",
+      "type": "date",
+      "format": "YYYY-MM-DD",
+      "description": "Date when the transaction was booked",
+      "required": true,
+      "examples": ["2025-11-02", "2025-11-13"]
+    },
+    {
+      "name": "Value Date",
+      "type": "date",
+      "format": "YYYY-MM-DD",
+      "description": "Date when the transaction value is effective",
+      "required": true,
+      "examples": ["2025-11-02", "2025-11-01"]
+    },
+    {
+      "name": "Partner Name",
+      "type": "string",
+      "description": "Merchant name or transaction partner",
+      "required": true,
+      "examples": ["Main Account", "NETFLIX INTERNATIONAL", "GOOGLE*YOUTUBEPREMIUM", "Patreon* Membership"]
+    },
+    {
+      "name": "Partner Iban",
+      "type": "string",
+      "description": "IBAN of the transaction partner (optional, often empty)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "IE48AIBK93122515656726"]
+    },
+    {
+      "name": "Type",
+      "type": "string",
+      "description": "Transaction type",
+      "required": true,
+      "examples": ["Presentment", "Debit Transfer", "Credit Transfer", "Direct Debit", "Fee"]
+    },
+    {
+      "name": "Payment Reference",
+      "type": "string",
+      "description": "Payment reference or memo (optional, often empty)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "N26 Metal Membership"]
+    },
+    {
+      "name": "Account Name",
+      "type": "string",
+      "description": "Account name (usually 'Main Account')",
+      "required": true,
+      "examples": ["Main Account"]
+    },
+    {
+      "name": "Amount (EUR)",
+      "type": "decimal",
+      "description": "Transaction amount in EUR (negative for debits, positive for credits)",
+      "required": true,
+      "examples": ["-50.00", "120.00", "-16.99", "21.50"]
+    },
+    {
+      "name": "Original Amount",
+      "type": "decimal",
+      "description": "Original amount in original currency (for foreign transactions)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "6.15", "16.99"]
+    },
+    {
+      "name": "Original Currency",
+      "type": "string",
+      "description": "Original currency code (usually EUR)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "EUR"]
+    },
+    {
+      "name": "Exchange Rate",
+      "type": "decimal",
+      "description": "Exchange rate used (if foreign currency)",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "1"]
+    }
+  ],
+  "notes": [
+    "Amount (EUR) is negative for outgoing transactions (debits)",
+    "Amount (EUR) is positive for incoming transactions (credits)",
+    "Dates are in YYYY-MM-DD format",
+    "Partner Name field contains merchant names or transaction details",
+    "Type field indicates transaction type (Presentment, Direct Debit, Transfer, Fee, etc.)",
+    "No separate balance field in N26 exports"
+  ]
+}
+

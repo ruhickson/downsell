@@ -17,6 +17,9 @@ import {
 import './App.css';
 import jsPDF from 'jspdf';
 import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
+import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
+import { enhanceCategoriesWithLLM } from './categoryEnhancer';
+import SankeyDiagram from './SankeyDiagram';
 
 ChartJS.register(
   CategoryScale,
@@ -44,8 +47,9 @@ type Transaction = {
   Date: string;
   Currency: string;
   Balance?: number;
-  BankSource: string; // 'AIB' or 'Revolut'
+  BankSource: string; // 'AIB', 'Revolut', 'BOI', or 'N26'
   Account: string; // 'AIB-1', 'REV-1', 'REV-2', etc.
+  Category?: string; // Transaction category (e.g., 'Entertainment', 'Food & Dining')
   OriginalData: RawTransaction; // Keep original for reference
 };
 
@@ -122,7 +126,7 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
 function normalizeTransaction(rawTx: RawTransaction, account: string): Transaction | null {
   const keys = Object.keys(rawTx);
   
-  // Detect bank format (check in order: Revolut, AIB, BOI)
+  // Detect bank format (check in order: Revolut, AIB, BOI, N26)
   const isRevolut = keys.some(k => 
     k.includes('Type') && 
     (k.includes('Started Date') || k.includes('Completed Date'))
@@ -137,6 +141,12 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     keys.some(k2 => k2.trim() === 'Details') &&
     keys.some(k3 => k3.trim() === 'Debit') &&
     keys.some(k4 => k4.trim() === 'Credit')
+  );
+  const isN26 = !isRevolut && !isAIB && !isBOI && (
+    keys.some(k => k.trim() === 'Booking Date' || k.includes('Booking Date')) &&
+    keys.some(k => k.trim() === 'Value Date' || k.includes('Value Date')) &&
+    keys.some(k => k.trim() === 'Partner Name' || k.includes('Partner Name')) &&
+    keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)'))
   );
   
   // Extract description
@@ -160,6 +170,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // BOI: use Details field directly
     const detailsKey = keys.find(k => k.trim() === 'Details' || k.includes('Details'));
     description = detailsKey ? String(rawTx[detailsKey] || '').trim() : '';
+  } else if (isN26) {
+    // N26: use Partner Name field directly
+    const partnerNameKey = keys.find(k => k.trim() === 'Partner Name' || k.includes('Partner Name'));
+    description = partnerNameKey ? String(rawTx[partnerNameKey] || '').trim() : '';
   } else {
     // Revolut: single Description field
     description = rawTx.Description || rawTx.description || '';
@@ -195,6 +209,12 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     } else if (creditAmount && String(creditAmount).trim()) {
       amount = parseFloat(String(creditAmount).replace(/,/g, ''));
     }
+  } else if (isN26) {
+    // N26: use Amount (EUR) field (already signed)
+    const amountKey = keys.find(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)'));
+    if (amountKey) {
+      amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
+    }
   } else {
     // Revolut: single Amount field (already signed)
     amount = parseFloat(rawTx.Amount || rawTx.amount || '0');
@@ -214,6 +234,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     } else {
       type = 'UNKNOWN';
     }
+  } else if (isN26) {
+    // N26: use Type field (Presentment, Debit Transfer, Credit Transfer, Direct Debit, Fee, etc.)
+    const typeKey = keys.find(k => k.trim() === 'Type' || k.includes('Type'));
+    type = typeKey ? String(rawTx[typeKey] || '').toUpperCase() : '';
   } else {
     type = (rawTx.Type || rawTx.type || '').toUpperCase();
   }
@@ -252,6 +276,13 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
         }
       }
     }
+  } else if (isN26) {
+    // N26: use Booking Date (YYYY-MM-DD format, already ISO)
+    const dateKey = keys.find(k => k.trim() === 'Booking Date' || k.includes('Booking Date'));
+    if (dateKey) {
+      dateStr = String(rawTx[dateKey] || '').trim();
+      // N26 dates are already in YYYY-MM-DD format
+    }
   } else {
     // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
     dateStr = (rawTx['Completed Date'] || rawTx['Started Date'] || rawTx.Date || rawTx.date || '').toString();
@@ -269,6 +300,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   } else if (isBOI) {
     // BOI doesn't have explicit currency field - default to EUR
     currency = 'EUR';
+  } else if (isN26) {
+    // N26 exports show amounts in EUR in 'Amount (EUR)' field - default to EUR
+    currency = 'EUR';
   } else {
     currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
   }
@@ -280,6 +314,11 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     balance = parseFloat(String(rawTx[balanceKey]).replace(/,/g, ''));
   }
   
+  // Initial categorization: check cache first, then rule-based matching
+  // Cache will be checked later in enhanceCategoriesWithLLM, but we can do a quick sync check here
+  // For now, use rule-based matching as initial categorization
+  const category = categorizeTransactionSync(description);
+  
   return {
     Description: description,
     Amount: amount,
@@ -287,8 +326,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : 'Revolut'),
+    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut')),
     Account: account,
+    Category: category,
     OriginalData: rawTx
   };
 }
@@ -453,14 +493,21 @@ const App: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
-  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number }>({ AIB: 0, Revolut: 0, BOI: 0 });
+  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const isEnhancingRef = React.useRef<boolean>(false);
+  const lastDataLengthRef = React.useRef<number>(0);
+  const [isClassifying, setIsClassifying] = React.useState<boolean>(false);
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
   const [transactionSearch, setTransactionSearch] = useState<string>('');
   const [accountFilter, setAccountFilter] = useState<string>('All');
+  const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [amountFilterType, setAmountFilterType] = useState<string>('none');
   const [amountFilterValue, setAmountFilterValue] = useState<string>('');
+  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(false);
+  const [privacyCollapsed, setPrivacyCollapsed] = useState<boolean>(false);
+  const [autopilotCollapsed, setAutopilotCollapsed] = useState<boolean>(false);
   const frequencyOptions = [
     'All',
     'Once-off/yearly',
@@ -484,6 +531,76 @@ const App: React.FC = () => {
     trackPageView(activeTab);
   }, [activeTab]);
 
+  // Helper function to enhance "Other" categories with LLM
+  const enhanceOtherCategories = async (dataToEnhance?: Transaction[]) => {
+    // Prevent multiple simultaneous enhancements
+    if (isEnhancingRef.current) {
+      console.log('⏸️ Enhancement already in progress, skipping...');
+      return;
+    }
+    
+    isEnhancingRef.current = true;
+    setIsClassifying(true);
+    console.log('🔄 Starting category enhancement with Gemini (via server)...');
+    
+    // Use provided data or current state
+    const currentData = dataToEnhance || csvData;
+    const otherCount = currentData.filter(tx => !tx.Category || tx.Category === 'Other').length;
+    console.log(`📊 Found ${otherCount} transactions in "Other" category to enhance`);
+    
+    if (otherCount === 0) {
+      console.log('✅ No transactions to enhance');
+      isEnhancingRef.current = false;
+      setIsClassifying(false);
+      return currentData;
+    }
+    
+    try {
+      // Enhance categories (pass API key for development fallback)
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const enhanced = await enhanceCategoriesWithLLM(currentData, apiKey);
+      const enhancedCount = enhanced.filter(tx => tx.Category && tx.Category !== 'Other').length - 
+                           currentData.filter(tx => tx.Category && tx.Category !== 'Other').length;
+      console.log(`✅ Enhanced ${enhancedCount} transactions with LLM`);
+      
+      // Update state with enhanced data
+      setCsvData(enhanced);
+      
+      // Recalculate subscriptions with new categories
+      const updatedSubscriptions = analyzeBankStatement(enhanced);
+      setSubscriptions(updatedSubscriptions);
+      
+      console.log(`✅ State updated: ${enhanced.length} transactions, ${updatedSubscriptions.length} subscriptions`);
+      isEnhancingRef.current = false;
+      setIsClassifying(false);
+      return enhanced;
+    } catch (err) {
+      console.error('❌ Failed to enhance categories:', err);
+      isEnhancingRef.current = false;
+      setIsClassifying(false);
+      return currentData;
+    }
+  };
+
+  // Auto-enhance when new data is added (but not on initial load or after enhancement)
+  React.useEffect(() => {
+    // Only enhance if data length increased (new upload) and we're not already enhancing
+    if (csvData.length > lastDataLengthRef.current && csvData.length > 0 && !isEnhancingRef.current) {
+      const previousLength = lastDataLengthRef.current;
+      lastDataLengthRef.current = csvData.length;
+      
+      // Wait a bit for state to stabilize, then enhance with current data
+      const timer = setTimeout(() => {
+        if (!isEnhancingRef.current && csvData.length > previousLength) {
+          enhanceOtherCategories(csvData);
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    } else if (csvData.length > 0) {
+      lastDataLengthRef.current = csvData.length;
+    }
+  }, [csvData.length]);
+
   // Process a single CSV file and merge with existing data
   const processCSVFile = (file: File, mergeWithExisting: boolean = true, onComplete?: () => void): Promise<void> => {
     return new Promise((resolve) => {
@@ -494,7 +611,7 @@ const App: React.FC = () => {
         const rawData = results.data as RawTransaction[];
         const rowCount = rawData.length;
         
-        // Detect bank type from first row (check in order: Revolut, AIB, BOI)
+        // Detect bank type from first row (check in order: Revolut, AIB, BOI, N26)
         const firstRow = rawData[0];
         const keys = firstRow ? Object.keys(firstRow) : [];
         
@@ -518,7 +635,15 @@ const App: React.FC = () => {
           keys.some(k => k.trim() === 'Debit') &&
           keys.some(k => k.trim() === 'Credit');
         
-        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : 'Revolut');
+        // Check for N26 (must have: Booking Date, Value Date, Partner Name, Amount (EUR))
+        const isN26 = !isRevolut && !isAIB && !isBOI && (
+          (keys.some(k => k.trim() === 'Booking Date' || k.includes('Booking Date')) &&
+           keys.some(k => k.trim() === 'Value Date' || k.includes('Value Date')) &&
+           keys.some(k => k.trim() === 'Partner Name' || k.includes('Partner Name')) &&
+           keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)')))
+        );
+        
+        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut'));
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -528,6 +653,8 @@ const App: React.FC = () => {
             ? `AIB-${newCounters[bankType]}` 
             : bankType === 'BOI'
             ? `BOI-${newCounters[bankType]}`
+            : bankType === 'N26'
+            ? `N26-${newCounters[bankType]}`
             : `REV-${newCounters[bankType]}`;
           
           // Normalize all transactions with account identifier
@@ -594,19 +721,18 @@ const App: React.FC = () => {
       alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
     }
     
-    trackButtonClick('CSV Upload', { method: 'file_input', file_count: fileArray.length });
+    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'file_input', file_count: fileArray.length });
     
     // Process files sequentially to avoid state conflicts
     for (let i = 0; i < fileArray.length; i++) {
-      await new Promise<void>((resolve) => {
-        processCSVFile(fileArray[i], i > 0 || csvData.length > 0, resolve);
-      });
+      await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
     }
     
     // Reset input to allow selecting the same files again
     if (inputRef.current) {
       inputRef.current.value = '';
     }
+    // Enhancement will be triggered by useEffect when csvData updates
   };
 
   const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
@@ -632,12 +758,13 @@ const App: React.FC = () => {
       alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
     }
     
-    trackButtonClick('CSV Upload', { method: 'drag_drop', file_count: fileArray.length });
+    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'drag_drop', file_count: fileArray.length });
     
     // Process files sequentially to avoid state conflicts
     for (let i = 0; i < fileArray.length; i++) {
       await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
     }
+    // Enhancement will be triggered by useEffect when csvData updates
   };
 
   const handleClick = () => {
@@ -782,62 +909,18 @@ const App: React.FC = () => {
   const spendOverTime = useMemo(() => {
     const monthlyData: Record<string, { total: number; subscriptions: number }> = {};
     
-    // Process all transactions
+    // Process all transactions (using normalized Transaction format)
     csvData.forEach((tx) => {
-      // Get all keys to help with field access
-      const keys = Object.keys(tx);
-      
-      // Detect bank format
-      const isAIB = keys.some(k => 
-        k.includes('Posted Account') || 
-        k.includes('Posted Transactions Date') || 
-        k.includes('Description1')
-      );
-      
-      // Extract amount
-      let amount = 0;
-      if (isAIB) {
-        // AIB: use Debit Amount (negative) or Credit Amount (positive)
-        const debitKey = keys.find(k => k.trim() === 'Debit Amount' || k.includes('Debit Amount'));
-        const creditKey = keys.find(k => k.trim() === 'Credit Amount' || k.includes('Credit Amount'));
-        
-        const debitAmount = debitKey ? (tx as any)[debitKey] : '';
-        const creditAmount = creditKey ? (tx as any)[creditKey] : '';
-        
-        if (debitAmount && String(debitAmount).trim()) {
-          amount = -parseFloat(String(debitAmount).replace(/,/g, ''));
-        } else if (creditAmount && String(creditAmount).trim()) {
-          amount = parseFloat(String(creditAmount).replace(/,/g, ''));
-        }
-      } else {
-        // Revolut: single Amount field
-        amount = parseFloat((tx as any).Amount || (tx as any).amount || '0');
-      }
+      // Use normalized Amount field (already negative for debits)
+      const amount = tx.Amount || 0;
       
       if (amount >= 0) return; // Only outgoing transactions
       
-      // Extract date
+      // Use normalized Date field (already in ISO format string)
       let date: Date | null = null;
-      if (isAIB) {
-        // AIB: use Posted Transactions Date (DD/MM/YYYY format)
-        const dateKey = keys.find(k => k.trim() === 'Posted Transactions Date' || k.includes('Posted Transactions Date'));
-        if (dateKey) {
-          const dateStr = String((tx as any)[dateKey] || '').trim();
-          if (dateStr) {
-            // Parse DD/MM/YYYY format
-            const parts = dateStr.split('/');
-            if (parts.length === 3) {
-              const day = parseInt(parts[0], 10);
-              const month = parseInt(parts[1], 10) - 1; // Month is 0-indexed
-              const year = parseInt(parts[2], 10);
-              date = new Date(year, month, day);
-            }
-          }
-        }
-      } else {
-        // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
-        const dateStr = ((tx as any)['Completed Date'] || (tx as any)['Started Date'] || (tx as any).Date || (tx as any).date || '').toString();
-        date = new Date(dateStr);
+      if (tx.Date) {
+        // Parse ISO date string (YYYY-MM-DD)
+        date = new Date(tx.Date);
       }
       
       if (!date || isNaN(date.getTime())) return;
@@ -892,6 +975,7 @@ const App: React.FC = () => {
   const handleDownloadReport = async () => {
     incrementStat('reports_downloaded');
     trackPDFDownload();
+    trackButtonClick('Download PDF Report', { location: 'report_page' });
     
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     let y = 40;
@@ -1167,7 +1251,10 @@ const App: React.FC = () => {
           <div style={{ padding: '1rem', marginTop: 'auto' }}>
             <button 
               className="optimize-btn" 
-              onClick={() => window.open('https://broc.fi', '_blank')}
+              onClick={() => {
+                trackButtonClick('Join Waitlist', { location: 'sidebar' });
+                window.open('https://broc.fi', '_blank');
+              }}
               style={{ width: '100%', padding: '0.75rem 1rem', fontSize: '0.95rem' }}
             >
               Join the Waitlist
@@ -1217,16 +1304,33 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
-                  <p style={{ margin: 0 }}>
-                    Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
-                  </p>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setAboutCollapsed(!aboutCollapsed)}
+                  >
+                    <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {aboutCollapsed ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!aboutCollapsed && (
+                    <>
+                      <p style={{ margin: 0 }}>
+                        Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div style={{ 
                   padding: '1rem 1.5rem', 
@@ -1238,13 +1342,30 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
-                  <p style={{ margin: 0 }}>
-                    All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    This is a free public tool designed to help everyone understand their finances better.
-                  </p>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setPrivacyCollapsed(!privacyCollapsed)}
+                  >
+                    <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {privacyCollapsed ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!privacyCollapsed && (
+                    <>
+                      <p style={{ margin: 0 }}>
+                        All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        This is a free public tool designed to help everyone understand their finances better.
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div style={{ 
                   padding: '1rem 1.5rem', 
@@ -1256,19 +1377,36 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
-                  <p style={{ margin: 0 }}>
-                    Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
-                  </p>
-                  <p style={{ margin: '0.75rem 0 0 0' }}>
-                    Join the waitlist and be first when we launch.
-                  </p>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setAutopilotCollapsed(!autopilotCollapsed)}
+                  >
+                    <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {autopilotCollapsed ? '▼' : '▲'}
+                    </span>
+                  </div>
+                  {!autopilotCollapsed && (
+                    <>
+                      <p style={{ margin: 0 }}>
+                        Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
+                      </p>
+                      <p style={{ margin: '0.75rem 0 0 0' }}>
+                        Join the waitlist and be first when we launch.
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div style={{ 
                   padding: '1rem 1.5rem', 
@@ -1280,9 +1418,65 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>📋 Supported Banks</strong>
-                  <p style={{ margin: 0 }}>
-                    Downsell currently works with CSVs exported from <strong>Revolut</strong>, <strong>AIB</strong>, and <strong>Bank of Ireland</strong>. We're expanding to support more banks in the coming weeks.
+                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.75rem' }}>📋 Supported Banks</strong>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap', 
+                    gap: '0.75rem', 
+                    alignItems: 'center',
+                    marginBottom: '0.75rem'
+                  }}>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
+                      <strong style={{ color: 'white' }}>Revolut</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🏛️</span>
+                      <strong style={{ color: 'white' }}>AIB</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
+                      <strong style={{ color: 'white' }}>Bank of Ireland</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.5rem 0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <span style={{ fontSize: '1.2rem' }}>💳</span>
+                      <strong style={{ color: 'white' }}>N26</strong>
+                    </div>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
+                    We're expanding to support more banks in the coming weeks.
                   </p>
                 </div>
                 <div className={"upload-area" + (dragActive ? " drag-active" : "")}
@@ -1652,25 +1846,67 @@ const App: React.FC = () => {
                           const dowLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                           return (
                             <div className="subscription-card" key={sub.description} style={{ position: 'relative' }}>
-                              {/* Account badge */}
+                              {/* Category and Account badges (right-aligned) */}
                               {(() => {
                                 const raw = subscriptionRawData[sub.description] || { accounts: new Set<string>() };
                                 const accounts = Array.from(raw.accounts).sort();
-                                return accounts.length > 0 && (
+                                const firstTx = csvData.find(tx => tx.Description === sub.description);
+                                const category = firstTx?.Category || 'Other';
+                                const categoryColor = getCategoryColor(category as Category);
+                                const showClassifying = (category === 'Other' || !category) && isClassifying;
+                                
+                                return (
                                   <div style={{
                                     position: 'absolute',
                                     top: '1rem',
                                     right: '1rem',
-                                    padding: '0.25rem 0.75rem',
-                                    borderRadius: '6px',
-                                    fontSize: '0.85rem',
-                                    fontWeight: 600,
-                                    background: 'rgba(247, 37, 133, 0.2)',
-                                    color: '#f72585',
-                                    border: '1px solid #f72585',
-                                    fontFamily: 'monospace'
+                                    display: 'flex',
+                                    gap: '0.5rem',
+                                    alignItems: 'center',
+                                    flexWrap: 'wrap',
+                                    justifyContent: 'flex-end'
                                   }}>
-                                    {accounts.join(', ')}
+                                    {/* Category badge */}
+                                    <div style={{
+                                      padding: '0.25rem 0.75rem',
+                                      borderRadius: '6px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 600,
+                                      background: showClassifying ? 'rgba(45, 140, 255, 0.2)' : `${categoryColor}20`,
+                                      color: showClassifying ? '#2d8cff' : categoryColor,
+                                      border: showClassifying ? '1px solid #2d8cff' : `1px solid ${categoryColor}`,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                    }}>
+                                      {showClassifying && (
+                                        <span style={{
+                                          display: 'inline-block',
+                                          width: '12px',
+                                          height: '12px',
+                                          border: '2px solid #2d8cff',
+                                          borderTopColor: 'transparent',
+                                          borderRadius: '50%',
+                                          animation: 'spin 1s linear infinite',
+                                        }} />
+                                      )}
+                                      {showClassifying ? 'Classifying...' : category}
+                                    </div>
+                                    {/* Account badge */}
+                                    {accounts.length > 0 && (
+                                      <div style={{
+                                        padding: '0.25rem 0.75rem',
+                                        borderRadius: '6px',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 600,
+                                        background: 'rgba(247, 37, 133, 0.2)',
+                                        color: '#f72585',
+                                        border: '1px solid #f72585',
+                                        fontFamily: 'monospace'
+                                      }}>
+                                        {accounts.join(', ')}
+                                      </div>
+                                    )}
                                   </div>
                                 );
                               })()}
@@ -1901,6 +2137,31 @@ const App: React.FC = () => {
                       />
                     </div>
 
+                    {/* Sankey Diagram - Spending Flow by Category */}
+                    {(() => {
+                      // Calculate spending by category
+                      const categorySpending: Record<string, number> = {};
+                      csvData.forEach(tx => {
+                        if (tx.Amount < 0) { // Only outgoing transactions
+                          const category = tx.Category || 'Other';
+                          categorySpending[category] = (categorySpending[category] || 0) + Math.abs(tx.Amount);
+                        }
+                      });
+
+                      // Show if there's any spending data
+                      const totalSpending = Object.values(categorySpending).reduce((sum, val) => sum + val, 0);
+                      const hasCategories = totalSpending > 0;
+                      
+                      return hasCategories ? (
+                        <>
+                          <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Spending Flow by Category</h2>
+                          <div style={{ marginBottom: '2rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '2rem' }}>
+                            <SankeyDiagram data={categorySpending} />
+                          </div>
+                        </>
+                      ) : null;
+                    })()}
+
                     <div style={{ marginTop: '2rem', textAlign: 'center' }}>
                       <button className="optimize-btn" onClick={handleDownloadReport}>Download PDF Report</button>
                     </div>
@@ -1927,6 +2188,7 @@ const App: React.FC = () => {
                           <thead>
                             <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
                               <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Name</th>
+                              <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Category</th>
                               <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Total Spend</th>
                               <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Monthly Spend</th>
                               <th style={{ padding: '1rem', textAlign: 'center', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Actions</th>
@@ -1941,10 +2203,43 @@ const App: React.FC = () => {
                                   : sub.frequencyLabel === 'Daily'
                                     ? -sub.average * 30
                                     : -sub.average;
+                              const rowNumber = index + 1; // 1-indexed row number
+                              const totalAmount = -sub.total; // Total amount (negative because it's a debit)
+                              const firstTx = csvData.find(tx => tx.Description === sub.description);
+                              const category = firstTx?.Category || 'Other';
+                              const categoryColor = getCategoryColor(category as Category);
+                              const showClassifying = (category === 'Other' || !category) && isClassifying;
                               return (
                                 <tr key={sub.description} style={{ borderBottom: index < highConfidenceSubscriptions.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
                                   <td style={{ padding: '1rem', color: 'white' }}>{sub.description}</td>
-                                  <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                                  <td style={{ padding: '1rem' }}>
+                                    <span style={{
+                                      padding: '0.25rem 0.5rem',
+                                      borderRadius: '4px',
+                                      fontSize: '0.85rem',
+                                      fontWeight: 500,
+                                      background: showClassifying ? 'rgba(45, 140, 255, 0.2)' : `${categoryColor}20`,
+                                      color: showClassifying ? '#2d8cff' : categoryColor,
+                                      border: showClassifying ? '1px solid #2d8cff' : `1px solid ${categoryColor}`,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                    }}>
+                                      {showClassifying && (
+                                        <span style={{
+                                          display: 'inline-block',
+                                          width: '10px',
+                                          height: '10px',
+                                          border: '2px solid #2d8cff',
+                                          borderTopColor: 'transparent',
+                                          borderRadius: '50%',
+                                          animation: 'spin 1s linear infinite',
+                                        }} />
+                                      )}
+                                      {showClassifying ? 'Classifying...' : category}
+                                    </span>
+                                  </td>
+                                  <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{monthlySpend.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                                   <td style={{ padding: '1rem', textAlign: 'center' }}>
                                     <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center', flexWrap: 'wrap' }}>
@@ -1954,7 +2249,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="optimize-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block' }}
-                                        onClick={() => trackButtonClick('Switch Subscription', { subscription: sub.description })}
+                                        onClick={() => trackButtonClick('Switch Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount, subscription: sub.description, category: category })}
                                       >
                                         Switch
                                       </a>
@@ -1964,7 +2259,7 @@ const App: React.FC = () => {
                                         rel="noopener noreferrer"
                                         className="alt-btn"
                                         style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block', background: 'rgba(247, 37, 133, 0.2)', color: '#f72585', border: '1px solid #f72585' }}
-                                        onClick={() => trackButtonClick('Cancel Subscription', { subscription: sub.description })}
+                                        onClick={() => trackButtonClick('Cancel Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount, subscription: sub.description, category: category })}
                                       >
                                         Cancel
                                       </a>
@@ -2057,6 +2352,32 @@ const App: React.FC = () => {
                           <option value="Subscription" style={{ background: '#2a3b4c', color: 'white' }}>Subscriptions Only</option>
                         </select>
                       </div>
+                      <div style={{ flex: '1', minWidth: '200px' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
+                          Filter by Category
+                        </label>
+                        <select
+                          value={categoryFilter}
+                          onChange={(e) => setCategoryFilter(e.target.value)}
+                          className="transaction-filter-select"
+                          style={{
+                            width: '100%',
+                            padding: '0.75rem',
+                            background: 'rgba(255, 255, 255, 0.1)',
+                            border: '1px solid rgba(255, 255, 255, 0.2)',
+                            borderRadius: '8px',
+                            color: 'white',
+                            fontSize: '1rem',
+                            fontFamily: 'Inter, sans-serif',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          <option value="All" style={{ background: '#2a3b4c', color: 'white' }}>All Categories</option>
+                          {Array.from(new Set(csvData.map(tx => tx.Category || 'Other').filter(cat => cat))).sort().map(category => (
+                            <option key={category} value={category} style={{ background: '#2a3b4c', color: 'white' }}>{category}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div style={{ flex: '2', minWidth: '250px' }}>
                         <label style={{ display: 'block', marginBottom: '0.5rem', color: '#bfc9da', fontSize: '0.9rem' }}>
                           Search
@@ -2137,6 +2458,7 @@ const App: React.FC = () => {
                           <tr style={{ background: 'rgba(45, 140, 255, 0.2)' }}>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Date</th>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Account</th>
+                            <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Category</th>
                             <th style={{ padding: '1rem', textAlign: 'left', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Description</th>
                             <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Amount</th>
                             <th style={{ padding: '1rem', textAlign: 'right', color: '#2d8cff', fontWeight: 600, borderBottom: '2px solid rgba(45, 140, 255, 0.3)' }}>Balance</th>
@@ -2164,6 +2486,14 @@ const App: React.FC = () => {
                         if (transactionFilter === 'Credit' && !isCredit) return false;
                         if (transactionFilter === 'Debit' && !isDebit) return false;
                         if (transactionFilter === 'Subscription' && !isSubscription) return false;
+                        
+                        // Apply category filter
+                        if (categoryFilter !== 'All') {
+                          const txCategory = transaction.Category || 'Other';
+                          if (txCategory !== categoryFilter) {
+                            return false;
+                          }
+                        }
                         
                         // Apply search filter
                         if (transactionSearch && !transaction.Description.toLowerCase().includes(transactionSearch.toLowerCase())) {
@@ -2224,6 +2554,40 @@ const App: React.FC = () => {
                               >
                                 <td style={{ padding: '1rem', color: 'white' }}>{formattedDate}</td>
                                 <td style={{ padding: '1rem', color: 'white', fontFamily: 'monospace', fontSize: '0.9rem', fontWeight: 500 }}>{transaction.Account}</td>
+                                <td style={{ padding: '1rem' }}>
+                                  {(() => {
+                                    const category = transaction.Category || 'Other';
+                                    const categoryColor = getCategoryColor(category as Category);
+                                    const showClassifying = (category === 'Other' || !category) && isClassifying;
+                                    return (
+                                      <span style={{
+                                        padding: '0.25rem 0.5rem',
+                                        borderRadius: '4px',
+                                        fontSize: '0.85rem',
+                                        fontWeight: 500,
+                                        background: showClassifying ? 'rgba(45, 140, 255, 0.2)' : `${categoryColor}20`,
+                                        color: showClassifying ? '#2d8cff' : categoryColor,
+                                        border: showClassifying ? '1px solid #2d8cff' : `1px solid ${categoryColor}`,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
+                                      }}>
+                                        {showClassifying && (
+                                          <span style={{
+                                            display: 'inline-block',
+                                            width: '10px',
+                                            height: '10px',
+                                            border: '2px solid #2d8cff',
+                                            borderTopColor: 'transparent',
+                                            borderRadius: '50%',
+                                            animation: 'spin 1s linear infinite',
+                                          }} />
+                                        )}
+                                        {showClassifying ? 'Classifying...' : category}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
                                 <td style={{ padding: '1rem', color: 'white' }}>{transaction.Description}</td>
                                 <td style={{ 
                                   padding: '1rem', 
@@ -2383,7 +2747,8 @@ const App: React.FC = () => {
                     <p>
                       <strong style={{ color: 'white' }}>Contact Information:</strong><br />
                       Email: ruairi@broc.fi<br />
-                      Website: <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a>
+                      Website: <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a><br />
+                      Source Code: <a href="https://github.com/ruhickson/downsell" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://github.com/ruhickson/downsell</a>
                     </p>
                   </section>
 
@@ -2675,7 +3040,8 @@ const App: React.FC = () => {
                     </p>
                     <p>
                       <strong style={{ color: 'white' }}>Email:</strong> <a href="mailto:ruairi@broc.fi" style={{ color: '#2d8cff', textDecoration: 'none' }}>ruairi@broc.fi</a><br />
-                      <strong style={{ color: 'white' }}>Website:</strong> <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a>
+                      <strong style={{ color: 'white' }}>Website:</strong> <a href="https://broc.fi" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://broc.fi</a><br />
+                      <strong style={{ color: 'white' }}>Source Code:</strong> <a href="https://github.com/ruhickson/downsell" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://github.com/ruhickson/downsell</a>
                     </p>
                   </section>
                 </div>

@@ -4,25 +4,29 @@
       "revolut": "Completed Date",
       "aib": "Posted Transactions Date",
       "boi": "Date",
-      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB and BOI use date format (DD/MM/YYYY). Use Completed Date for Revolut, Posted Transactions Date for AIB, Date for BOI."
+      "n26": "Booking Date",
+      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB and BOI use date format (DD/MM/YYYY). N26 uses ISO date format (YYYY-MM-DD). Use Completed Date for Revolut, Posted Transactions Date for AIB, Date for BOI, Booking Date for N26."
     },
     "description": {
       "revolut": "Description",
       "aib": ["Description1", "Description2", "Description3"],
       "boi": "Details",
-      "notes": "For AIB, concatenate Description1 + Description2 + Description3 (with spaces) to get full description. Description2 and Description3 may be empty. For BOI, use Details field directly."
+      "n26": "Partner Name",
+      "notes": "For AIB, use only Description1 (prefixes removed). For BOI, use Details field directly. For N26, use Partner Name field directly."
     },
     "amount": {
       "revolut": "Amount",
       "aib": ["Debit Amount", "Credit Amount"],
       "boi": ["Debit", "Credit"],
-      "notes": "Revolut uses single Amount field (negative for debits, positive for credits). AIB and BOI use separate Debit and Credit fields (one will be empty). For AIB/BOI: if Debit exists, use negative value; if Credit exists, use positive value. Remove commas from amounts."
+      "n26": "Amount (EUR)",
+      "notes": "Revolut and N26 use single Amount field (negative for debits, positive for credits). AIB and BOI use separate Debit and Credit fields (one will be empty). For AIB/BOI: if Debit exists, use negative value; if Credit exists, use positive value. Remove commas from amounts."
     },
     "currency": {
       "revolut": "Currency",
       "aib": "Posted Currency",
       "boi": "EUR",
-      "notes": "Revolut and AIB have explicit currency fields. BOI typically uses EUR (default)."
+      "n26": "EUR",
+      "notes": "Revolut and AIB have explicit currency fields. BOI and N26 typically use EUR (default). N26 exports show amounts in EUR in 'Amount (EUR)' field."
     },
     "balance": {
       "revolut": "Balance",
@@ -34,7 +38,8 @@
       "revolut": "Type",
       "aib": "Transaction Type",
       "boi": null,
-      "notes": "Revolut uses values like 'CARD_PAYMENT', 'EXCHANGE', 'TRANSFER'. AIB uses values like 'Debit', 'Credit', 'Direct Debit'. BOI does not have an explicit transaction type field - infer from Debit/Credit fields."
+      "n26": "Type",
+      "notes": "Revolut uses values like 'CARD_PAYMENT', 'EXCHANGE', 'TRANSFER'. AIB uses values like 'Debit', 'Credit', 'Direct Debit'. N26 uses values like 'Presentment', 'Debit Transfer', 'Credit Transfer', 'Direct Debit', 'Fee'. BOI does not have an explicit transaction type field - infer from Debit/Credit fields."
     }
   },
   "detection_rules": {
@@ -64,6 +69,16 @@
       ],
       "file_pattern": "*.csv",
       "detection_notes": "BOI has the simplest format. Check for Date, Details, Debit, Credit, Balance columns. If file doesn't match Revolut or AIB patterns, and has these 5 columns, it's likely BOI."
+    },
+    "n26": {
+      "required_columns": ["Booking Date", "Value Date", "Partner Name", "Type", "Account Name", "Amount (EUR)"],
+      "unique_identifiers": [
+        "Booking Date",
+        "Value Date",
+        "Partner Name"
+      ],
+      "file_pattern": "*.csv",
+      "detection_notes": "N26 format has 'Booking Date', 'Value Date', 'Partner Name', 'Amount (EUR)' columns. Type column includes values like 'Presentment', 'Debit Transfer', 'Credit Transfer', 'Direct Debit', 'Fee'."
     }
   },
   "processing_notes": {
@@ -84,6 +99,12 @@
       "amount_parsing": "If Debit exists and is not empty, use negative value. If Credit exists and is not empty, use positive value. One will always be empty.",
       "description_parsing": "Use Details field directly. Trim whitespace.",
       "filtering": "No explicit transaction type field. Filter based on description patterns if needed (e.g., 'SEPA DD' for direct debits, 'FEE:' for fees)."
+    },
+    "n26": {
+      "date_parsing": "Parse as ISO date format: YYYY-MM-DD. Use Booking Date field.",
+      "amount_parsing": "Amount (EUR) is already signed (negative for debits, positive for credits). Use as-is.",
+      "description_parsing": "Use Partner Name field directly. Trim whitespace.",
+      "filtering": "Filter out internal transfers where Partner Name is 'Main Account' and Type is 'Debit Transfer' or 'Credit Transfer' for subscription analysis."
     }
   }
 }

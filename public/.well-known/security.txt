@@ -1,0 +1,7 @@
+Contact: mailto:ruairi@broc.fi
+Expires: 2026-12-31T23:59:59.000Z
+Preferred-Languages: en
+Canonical: https://downsell.eu/.well-known/security.txt
+Policy: https://downsell.eu/#Privacy%20Policy
+Acknowledgments: https://downsell.eu/#About
+

@@ -23,6 +23,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+testdata/
+supabase_schema.sql
 
 # Environment variables
 .env

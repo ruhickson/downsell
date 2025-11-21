@@ -8,3 +8,16 @@
   # The Gemini API key is intentionally exposed to client-side code (Vite requirement)
   SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
 
+# Environment variables for Netlify Functions (Supabase)
+# These should be set in Netlify's dashboard under Site settings > Environment variables
+# Add these variables in Netlify dashboard:
+# - SUPABASE_URL: Your Supabase project URL
+# - SUPABASE_SERVICE_ROLE_KEY: Your Supabase service role key (bypasses RLS)
+[functions]
+  # Environment variables are automatically available to functions
+  # Set them in Netlify dashboard: Site settings > Environment variables
+  node_bundler = "esbuild"
+  
+[functions."netlify/functions/categorize-transactions.ts"]
+  timeout = 60
+

@@ -1,4 +1,6 @@
 // Netlify Function to track page views (for SPA navigation)
+import { supabase } from './_supabase';
+
 export const handler = async (event: any) => {
   const headers = {
     'Access-Control-Allow-Origin': '*',
@@ -18,13 +20,36 @@ export const handler = async (event: any) => {
   try {
     const eventData = JSON.parse(event.body || '{}');
     const { page } = eventData;
+    const timestamp = new Date().toISOString();
+    const ip = event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown';
+    const userAgent = event.headers['user-agent'] || 'unknown';
 
     console.log('Page view tracked:', {
       page,
-      timestamp: new Date().toISOString(),
-      ip: event.headers['x-forwarded-for'] || event.headers['client-ip'] || 'unknown',
-      userAgent: event.headers['user-agent'] || 'unknown',
+      timestamp,
+      ip,
+      userAgent,
     });
+
+    // Save to Supabase if configured
+    if (supabase) {
+      try {
+        const { error } = await supabase
+          .from('page_views')
+          .insert({
+            page: page,
+            timestamp: timestamp,
+            ip_address: ip,
+            user_agent: userAgent,
+          });
+
+        if (error) {
+          console.error('Error saving to Supabase:', error);
+        }
+      } catch (dbError) {
+        console.error('Database error (non-blocking):', dbError);
+      }
+    }
 
     return {
       statusCode: 200,
