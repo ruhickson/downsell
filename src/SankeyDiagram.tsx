@@ -65,7 +65,7 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data }) => {
 
   // Calculate link paths (curved)
   const calculateLinkPath = (sourceY: number, sourceHeight: number, targetY: number, targetHeight: number) => {
-    const sourceX = leftColumnX + 150; // End of source node
+    const sourceX = leftColumnX + 180; // End of source node (updated to match new width)
     const targetX = rightColumnX; // Start of target node
     const sourceCenterY = sourceY + sourceHeight / 2;
     const targetCenterY = targetY + targetHeight / 2;
