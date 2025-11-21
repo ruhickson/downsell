@@ -495,6 +495,7 @@ const App: React.FC = () => {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const isEnhancingRef = React.useRef<boolean>(false);
   const lastDataLengthRef = React.useRef<number>(0);
+  const [isClassifying, setIsClassifying] = React.useState<boolean>(false);
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
   const [transactionSearch, setTransactionSearch] = useState<string>('');
@@ -537,6 +538,7 @@ const App: React.FC = () => {
     }
     
     isEnhancingRef.current = true;
+    setIsClassifying(true);
     console.log('🔄 Starting category enhancement with Gemini (via server)...');
     
     // Use provided data or current state
@@ -547,6 +549,7 @@ const App: React.FC = () => {
     if (otherCount === 0) {
       console.log('✅ No transactions to enhance');
       isEnhancingRef.current = false;
+      setIsClassifying(false);
       return currentData;
     }
     
@@ -567,10 +570,12 @@ const App: React.FC = () => {
       
       console.log(`✅ State updated: ${enhanced.length} transactions, ${updatedSubscriptions.length} subscriptions`);
       isEnhancingRef.current = false;
+      setIsClassifying(false);
       return enhanced;
     } catch (err) {
       console.error('❌ Failed to enhance categories:', err);
       isEnhancingRef.current = false;
+      setIsClassifying(false);
       return currentData;
     }
   };
@@ -1890,6 +1895,7 @@ const App: React.FC = () => {
                                 const firstTx = csvData.find(tx => tx.Description === sub.description);
                                 const category = firstTx?.Category || 'Other';
                                 const categoryColor = getCategoryColor(category as Category);
+                                const showClassifying = (category === 'Other' || !category) && isClassifying;
                                 
                                 return (
                                   <div style={{
@@ -1908,11 +1914,25 @@ const App: React.FC = () => {
                                       borderRadius: '6px',
                                       fontSize: '0.85rem',
                                       fontWeight: 600,
-                                      background: `${categoryColor}20`,
-                                      color: categoryColor,
-                                      border: `1px solid ${categoryColor}`,
+                                      background: showClassifying ? 'rgba(45, 140, 255, 0.2)' : `${categoryColor}20`,
+                                      color: showClassifying ? '#2d8cff' : categoryColor,
+                                      border: showClassifying ? '1px solid #2d8cff' : `1px solid ${categoryColor}`,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
                                     }}>
-                                      {category}
+                                      {showClassifying && (
+                                        <span style={{
+                                          display: 'inline-block',
+                                          width: '12px',
+                                          height: '12px',
+                                          border: '2px solid #2d8cff',
+                                          borderTopColor: 'transparent',
+                                          borderRadius: '50%',
+                                          animation: 'spin 1s linear infinite',
+                                        }} />
+                                      )}
+                                      {showClassifying ? 'Classifying...' : category}
                                     </div>
                                     {/* Account badge */}
                                     {accounts.length > 0 && (
@@ -2230,6 +2250,7 @@ const App: React.FC = () => {
                               const firstTx = csvData.find(tx => tx.Description === sub.description);
                               const category = firstTx?.Category || 'Other';
                               const categoryColor = getCategoryColor(category as Category);
+                              const showClassifying = (category === 'Other' || !category) && isClassifying;
                               return (
                                 <tr key={sub.description} style={{ borderBottom: index < highConfidenceSubscriptions.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
                                   <td style={{ padding: '1rem', color: 'white' }}>{sub.description}</td>
@@ -2239,11 +2260,25 @@ const App: React.FC = () => {
                                       borderRadius: '4px',
                                       fontSize: '0.85rem',
                                       fontWeight: 500,
-                                      background: `${categoryColor}20`,
-                                      color: categoryColor,
-                                      border: `1px solid ${categoryColor}`,
+                                      background: showClassifying ? 'rgba(45, 140, 255, 0.2)' : `${categoryColor}20`,
+                                      color: showClassifying ? '#2d8cff' : categoryColor,
+                                      border: showClassifying ? '1px solid #2d8cff' : `1px solid ${categoryColor}`,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
                                     }}>
-                                      {category}
+                                      {showClassifying && (
+                                        <span style={{
+                                          display: 'inline-block',
+                                          width: '10px',
+                                          height: '10px',
+                                          border: '2px solid #2d8cff',
+                                          borderTopColor: 'transparent',
+                                          borderRadius: '50%',
+                                          animation: 'spin 1s linear infinite',
+                                        }} />
+                                      )}
+                                      {showClassifying ? 'Classifying...' : category}
                                     </span>
                                   </td>
                                   <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
@@ -2565,17 +2600,32 @@ const App: React.FC = () => {
                                   {(() => {
                                     const category = transaction.Category || 'Other';
                                     const categoryColor = getCategoryColor(category as Category);
+                                    const showClassifying = (category === 'Other' || !category) && isClassifying;
                                     return (
                                       <span style={{
                                         padding: '0.25rem 0.5rem',
                                         borderRadius: '4px',
                                         fontSize: '0.85rem',
                                         fontWeight: 500,
-                                        background: `${categoryColor}20`,
-                                        color: categoryColor,
-                                        border: `1px solid ${categoryColor}`,
+                                        background: showClassifying ? 'rgba(45, 140, 255, 0.2)' : `${categoryColor}20`,
+                                        color: showClassifying ? '#2d8cff' : categoryColor,
+                                        border: showClassifying ? '1px solid #2d8cff' : `1px solid ${categoryColor}`,
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem',
                                       }}>
-                                        {category}
+                                        {showClassifying && (
+                                          <span style={{
+                                            display: 'inline-block',
+                                            width: '10px',
+                                            height: '10px',
+                                            border: '2px solid #2d8cff',
+                                            borderTopColor: 'transparent',
+                                            borderRadius: '50%',
+                                            animation: 'spin 1s linear infinite',
+                                          }} />
+                                        )}
+                                        {showClassifying ? 'Classifying...' : category}
                                       </span>
                                     );
                                   })()}
