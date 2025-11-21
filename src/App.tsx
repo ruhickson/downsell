@@ -17,7 +17,7 @@ import {
 import './App.css';
 import jsPDF from 'jspdf';
 import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
-import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
+import { type Category, getCategoryColor } from './categories';
 import { enhanceCategoriesWithLLM } from './categoryEnhancer';
 
 ChartJS.register(
@@ -313,8 +313,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     balance = parseFloat(String(rawTx[balanceKey]).replace(/,/g, ''));
   }
   
-  // Categorize transaction using rule-based matching (fast, synchronous)
-  const category = categorizeTransactionSync(description);
+  // Category will be assigned via LLM in batches (no initial categorization)
   
   return {
     Description: description,
@@ -325,7 +324,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Balance: balance,
     BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut')),
     Account: account,
-    Category: category,
+    Category: 'Other', // Placeholder - will be replaced by LLM categorization
     OriginalData: rawTx
   };
 }
@@ -527,64 +526,63 @@ const App: React.FC = () => {
     trackPageView(activeTab);
   }, [activeTab]);
 
-  // Helper function to enhance "Other" categories with LLM
-  const enhanceOtherCategories = async (dataToEnhance?: Transaction[]) => {
-    // Prevent multiple simultaneous enhancements
+  // Helper function to categorize all transactions with AI
+  const categorizeAllTransactions = async (dataToCategorize?: Transaction[]) => {
+    // Prevent multiple simultaneous categorizations
     if (isEnhancingRef.current) {
-      console.log('⏸️ Enhancement already in progress, skipping...');
+      console.log('⏸️ Categorization already in progress, skipping...');
       return;
     }
     
     isEnhancingRef.current = true;
-    console.log('🔄 Starting category enhancement with Gemini (via server)...');
+    console.log('🔄 Starting AI categorization for all transactions...');
     
     // Use provided data or current state
-    const currentData = dataToEnhance || csvData;
-    const otherCount = currentData.filter(tx => !tx.Category || tx.Category === 'Other').length;
-    console.log(`📊 Found ${otherCount} transactions in "Other" category to enhance`);
+    const currentData = dataToCategorize || csvData;
+    const totalCount = currentData.length;
+    console.log(`📊 Categorizing ${totalCount} transactions with AI...`);
     
-    if (otherCount === 0) {
-      console.log('✅ No transactions to enhance');
+    if (totalCount === 0) {
+      console.log('✅ No transactions to categorize');
       isEnhancingRef.current = false;
       return currentData;
     }
     
     try {
-      // Enhance categories (pass API key for development fallback)
+      // Categorize all transactions via AI (pass API key for development fallback)
       const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const enhanced = await enhanceCategoriesWithLLM(currentData, apiKey);
-      const enhancedCount = enhanced.filter(tx => tx.Category && tx.Category !== 'Other').length - 
-                           currentData.filter(tx => tx.Category && tx.Category !== 'Other').length;
-      console.log(`✅ Enhanced ${enhancedCount} transactions with LLM`);
+      const categorized = await enhanceCategoriesWithLLM(currentData, apiKey);
+      const categorizedCount = categorized.filter(tx => tx.Category && tx.Category !== 'Other').length;
+      console.log(`✅ Categorized ${categorizedCount} transactions with AI`);
       
-      // Update state with enhanced data
-      setCsvData(enhanced);
+      // Update state with categorized data
+      setCsvData(categorized);
       
       // Recalculate subscriptions with new categories
-      const updatedSubscriptions = analyzeBankStatement(enhanced);
+      const updatedSubscriptions = analyzeBankStatement(categorized);
       setSubscriptions(updatedSubscriptions);
       
-      console.log(`✅ State updated: ${enhanced.length} transactions, ${updatedSubscriptions.length} subscriptions`);
+      console.log(`✅ State updated: ${categorized.length} transactions, ${updatedSubscriptions.length} subscriptions`);
       isEnhancingRef.current = false;
-      return enhanced;
+      return categorized;
     } catch (err) {
-      console.error('❌ Failed to enhance categories:', err);
+      console.error('❌ Failed to categorize transactions:', err);
       isEnhancingRef.current = false;
       return currentData;
     }
   };
 
-  // Auto-enhance when new data is added (but not on initial load or after enhancement)
+  // Auto-categorize when new data is added (but not on initial load or after categorization)
   React.useEffect(() => {
-    // Only enhance if data length increased (new upload) and we're not already enhancing
+    // Only categorize if data length increased (new upload) and we're not already categorizing
     if (csvData.length > lastDataLengthRef.current && csvData.length > 0 && !isEnhancingRef.current) {
       const previousLength = lastDataLengthRef.current;
       lastDataLengthRef.current = csvData.length;
       
-      // Wait a bit for state to stabilize, then enhance with current data
+      // Wait a bit for state to stabilize, then categorize all transactions with AI
       const timer = setTimeout(() => {
         if (!isEnhancingRef.current && csvData.length > previousLength) {
-          enhanceOtherCategories(csvData);
+          categorizeAllTransactions(csvData);
         }
       }, 1000);
       return () => clearTimeout(timer);
