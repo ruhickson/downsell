@@ -1344,118 +1344,122 @@ const App: React.FC = () => {
               <>
                 <h1>Analyze Your Subscriptions</h1>
                 <div style={{ 
-                  padding: '1rem 1.5rem', 
-                  background: 'rgba(255, 255, 255, 0.05)', 
-                  border: '1px solid rgba(255, 255, 255, 0.1)', 
-                  borderRadius: '12px', 
-                  marginBottom: '1.5rem',
-                  color: '#bfc9da',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.6'
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '1.5rem',
+                  marginBottom: '1.5rem'
                 }}>
-                  <div 
-                    style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setAboutCollapsed(!aboutCollapsed)}
-                  >
-                    <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
-                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
-                      {aboutCollapsed ? '▼' : '▲'}
-                    </span>
+                  <div style={{ 
+                    padding: '1rem 1.5rem', 
+                    background: 'rgba(255, 255, 255, 0.05)', 
+                    border: '1px solid rgba(255, 255, 255, 0.1)', 
+                    borderRadius: '12px', 
+                    color: '#bfc9da',
+                    fontSize: '0.95rem',
+                    lineHeight: '1.6'
+                  }}>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setAboutCollapsed(!aboutCollapsed)}
+                    >
+                      <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
+                      <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                        {aboutCollapsed ? '▼' : '▲'}
+                      </span>
+                    </div>
+                    {!aboutCollapsed && (
+                      <>
+                        <p style={{ margin: 0 }}>
+                          Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
+                        </p>
+                      </>
+                    )}
                   </div>
-                  {!aboutCollapsed && (
-                    <>
-                      <p style={{ margin: 0 }}>
-                        Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
-                      </p>
-                    </>
-                  )}
-                </div>
-                <div style={{ 
-                  padding: '1rem 1.5rem', 
-                  background: 'rgba(45, 140, 255, 0.15)', 
-                  border: '1px solid rgba(45, 140, 255, 0.3)', 
-                  borderRadius: '12px', 
-                  marginBottom: '1.5rem',
-                  color: '#bfc9da',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.6'
-                }}>
-                  <div 
-                    style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setPrivacyCollapsed(!privacyCollapsed)}
-                  >
-                    <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
-                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
-                      {privacyCollapsed ? '▼' : '▲'}
-                    </span>
+                  <div style={{ 
+                    padding: '1rem 1.5rem', 
+                    background: 'rgba(45, 140, 255, 0.15)', 
+                    border: '1px solid rgba(45, 140, 255, 0.3)', 
+                    borderRadius: '12px', 
+                    color: '#bfc9da',
+                    fontSize: '0.95rem',
+                    lineHeight: '1.6'
+                  }}>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setPrivacyCollapsed(!privacyCollapsed)}
+                    >
+                      <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
+                      <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                        {privacyCollapsed ? '▼' : '▲'}
+                      </span>
+                    </div>
+                    {!privacyCollapsed && (
+                      <>
+                        <p style={{ margin: 0 }}>
+                          All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          This is a free public tool designed to help everyone understand their finances better.
+                        </p>
+                      </>
+                    )}
                   </div>
-                  {!privacyCollapsed && (
-                    <>
-                      <p style={{ margin: 0 }}>
-                        All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        This is a free public tool designed to help everyone understand their finances better.
-                      </p>
-                    </>
-                  )}
-                </div>
-                <div style={{ 
-                  padding: '1rem 1.5rem', 
-                  background: 'rgba(0, 217, 255, 0.1)', 
-                  border: '1px solid rgba(0, 217, 255, 0.3)', 
-                  borderRadius: '12px', 
-                  marginBottom: '1.5rem',
-                  color: '#bfc9da',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.6'
-                }}>
-                  <div 
-                    style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setAutopilotCollapsed(!autopilotCollapsed)}
-                  >
-                    <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
-                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
-                      {autopilotCollapsed ? '▼' : '▲'}
-                    </span>
+                  <div style={{ 
+                    padding: '1rem 1.5rem', 
+                    background: 'rgba(0, 217, 255, 0.1)', 
+                    border: '1px solid rgba(0, 217, 255, 0.3)', 
+                    borderRadius: '12px', 
+                    color: '#bfc9da',
+                    fontSize: '0.95rem',
+                    lineHeight: '1.6'
+                  }}>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setAutopilotCollapsed(!autopilotCollapsed)}
+                    >
+                      <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
+                      <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                        {autopilotCollapsed ? '▼' : '▲'}
+                      </span>
+                    </div>
+                    {!autopilotCollapsed && (
+                      <>
+                        <p style={{ margin: 0 }}>
+                          Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Join the waitlist and be first when we launch.
+                        </p>
+                      </>
+                    )}
                   </div>
-                  {!autopilotCollapsed && (
-                    <>
-                      <p style={{ margin: 0 }}>
-                        Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Join the waitlist and be first when we launch.
-                      </p>
-                    </>
-                  )}
                 </div>
                 <div style={{ 
                   padding: '1rem 1.5rem', 
