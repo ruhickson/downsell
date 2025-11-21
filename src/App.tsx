@@ -2847,6 +2847,9 @@ const App: React.FC = () => {
                     <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
                       4. Data Storage and Processing
                     </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      No financial data is stored permanently. No personal data is sent to servers. Your privacy is protected.
+                    </p>
                     
                     {/* Privacy & Data Processing Diagram */}
                     <div style={{ 
@@ -2929,7 +2932,7 @@ const App: React.FC = () => {
                         background: 'rgba(45, 140, 255, 0.15)',
                         borderRadius: '8px'
                       }}>
-                        ✅ No data is stored permanently. No data is sent to servers. Your privacy is protected.
+                        ✅ No financial data is stored permanently. No personal data is sent to servers. Your privacy is protected.
                       </p>
                     </div>
 
