@@ -19,6 +19,7 @@ import jsPDF from 'jspdf';
 import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
 import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
 import { enhanceCategoriesWithLLM } from './categoryEnhancer';
+import SankeyDiagram from './SankeyDiagram';
 
 ChartJS.register(
   CategoryScale,
@@ -2157,6 +2158,31 @@ const App: React.FC = () => {
                         }}
                       />
                     </div>
+
+                    {/* Sankey Diagram - Spending Flow by Category */}
+                    {(() => {
+                      // Calculate spending by category
+                      const categorySpending: Record<string, number> = {};
+                      csvData.forEach(tx => {
+                        if (tx.Amount < 0) { // Only outgoing transactions
+                          const category = tx.Category || 'Other';
+                          categorySpending[category] = (categorySpending[category] || 0) + Math.abs(tx.Amount);
+                        }
+                      });
+
+                      // Only show if there are categories (after enhancement)
+                      const hasCategories = Object.keys(categorySpending).length > 0 && 
+                        Object.keys(categorySpending).some(cat => cat !== 'Other' || categorySpending[cat] > 0);
+                      
+                      return hasCategories ? (
+                        <>
+                          <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Spending Flow by Category</h2>
+                          <div style={{ marginBottom: '2rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '2rem' }}>
+                            <SankeyDiagram data={categorySpending} />
+                          </div>
+                        </>
+                      ) : null;
+                    })()}
 
                     <div style={{ marginTop: '2rem', textAlign: 'center' }}>
                       <button className="optimize-btn" onClick={handleDownloadReport}>Download PDF Report</button>
