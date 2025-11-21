@@ -1471,69 +1471,94 @@ const App: React.FC = () => {
                   <div style={{ 
                     display: 'flex', 
                     flexWrap: 'wrap', 
-                    gap: '0.75rem', 
+                    gap: '1rem', 
                     alignItems: 'center',
                     marginBottom: '0.75rem'
                   }}>
                     <div style={{ 
                       display: 'flex', 
+                      flexDirection: 'column',
                       alignItems: 'center', 
                       gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
+                      padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
                       border: '1px solid rgba(255, 255, 255, 0.2)'
                     }}>
-                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
-                      <strong style={{ color: 'white' }}>Revolut</strong>
+                      <img 
+                        src="https://i.imgur.com/ZcvnQ83.png" 
+                        alt="AIB" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>AIB</strong>
                     </div>
                     <div style={{ 
                       display: 'flex', 
+                      flexDirection: 'column',
                       alignItems: 'center', 
                       gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
+                      padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
                       border: '1px solid rgba(255, 255, 255, 0.2)'
                     }}>
-                      <span style={{ fontSize: '1.2rem' }}>🏛️</span>
-                      <strong style={{ color: 'white' }}>AIB</strong>
+                      <img 
+                        src="https://i.imgur.com/Z9cqIo8.png" 
+                        alt="Bank of Ireland" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Bank of Ireland</strong>
                     </div>
                     <div style={{ 
                       display: 'flex', 
+                      flexDirection: 'column',
                       alignItems: 'center', 
                       gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
+                      padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
                       border: '1px solid rgba(255, 255, 255, 0.2)'
                     }}>
-                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
-                      <strong style={{ color: 'white' }}>Bank of Ireland</strong>
+                      <img 
+                        src="https://i.imgur.com/3HBtReM.png" 
+                        alt="Bunq" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Bunq</strong>
                     </div>
                     <div style={{ 
                       display: 'flex', 
+                      flexDirection: 'column',
                       alignItems: 'center', 
                       gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
+                      padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
                       border: '1px solid rgba(255, 255, 255, 0.2)'
                     }}>
-                      <span style={{ fontSize: '1.2rem' }}>💳</span>
-                      <strong style={{ color: 'white' }}>N26</strong>
+                      <img 
+                        src="https://i.imgur.com/rr9wMgQ.png" 
+                        alt="N26" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>N26</strong>
                     </div>
                     <div style={{ 
                       display: 'flex', 
+                      flexDirection: 'column',
                       alignItems: 'center', 
                       gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
+                      padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
                       border: '1px solid rgba(255, 255, 255, 0.2)'
                     }}>
-                      <span style={{ fontSize: '1.2rem' }}>🏪</span>
-                      <strong style={{ color: 'white' }}>Bunq</strong>
+                      <img 
+                        src="https://i.imgur.com/hNxpqq9.png" 
+                        alt="Revolut" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Revolut</strong>
                     </div>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
