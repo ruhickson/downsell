@@ -197,15 +197,17 @@ export async function enhanceCategoriesWithLLM(
   apiKey?: string, // Used in development mode as fallback
   batchSize: number = 20
 ): Promise<Transaction[]> {
-  // Get all unique transaction descriptions (categorize everything via AI)
-  const uniqueDescriptions = Array.from(new Set(transactions.map(tx => tx.Description)));
+  // Get unique "Other" category transactions (by description to avoid duplicates)
+  const otherTransactions = transactions.filter(tx => !tx.Category || tx.Category === 'Other');
+  const uniqueDescriptions = Array.from(new Set(otherTransactions.map(tx => tx.Description)));
   
   if (uniqueDescriptions.length === 0) {
-    return transactions; // Nothing to categorize
+    return transactions; // Nothing to enhance
   }
   
-  console.log(`🔄 Categorizing ${uniqueDescriptions.length} unique transactions with AI...`);
+  console.log(`🔄 Enhancing ${uniqueDescriptions.length} unique "Other" transactions with LLM...`);
   
+  const enhancedTransactions = [...transactions];
   const categoryMap: Record<string, Category> = {};
   
   // Process in batches
@@ -226,23 +228,27 @@ export async function enhanceCategoriesWithLLM(
         await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
       }
     } catch (error) {
-      console.error(`❌ Failed to categorize batch ${i}-${i + batchSize}:`, error);
+      console.error(`❌ Failed to enhance batch ${i}-${i + batchSize}:`, error);
     }
   }
   
-  // Update all transactions with AI-categorized categories
+  // Update all transactions with enhanced categories
   // Create new array with new objects to ensure React detects the change
   let updatedCount = 0;
-  const finalTransactions = transactions.map(tx => {
-    const aiCategory = categoryMap[tx.Description] || 'Other';
-    if (aiCategory !== 'Other') {
-      updatedCount++;
+  const finalTransactions = enhancedTransactions.map(tx => {
+    if (!tx.Category || tx.Category === 'Other') {
+      const enhancedCategory = categoryMap[tx.Description] || 'Other';
+      if (enhancedCategory !== 'Other') {
+        updatedCount++;
+        console.log(`  🔄 Updating "${tx.Description}" from "Other" to "${enhancedCategory}"`);
+      }
+      // Return new object with updated category
+      return { ...tx, Category: enhancedCategory };
     }
-    // Return new object with AI-assigned category
-    return { ...tx, Category: aiCategory };
+    return tx; // Return unchanged transaction
   });
   
-  console.log(`✅ Categorized ${updatedCount} transactions via AI (${uniqueDescriptions.length} unique descriptions processed)`);
+  console.log(`✅ Enhanced ${updatedCount} transactions (${uniqueDescriptions.length} unique descriptions processed)`);
   console.log(`📊 Final category distribution:`, Object.entries(
     finalTransactions.reduce((acc, tx) => {
       const cat = tx.Category || 'Other';
