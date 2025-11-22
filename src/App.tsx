@@ -47,8 +47,8 @@ type Transaction = {
   Date: string;
   Currency: string;
   Balance?: number;
-  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', or 'BUNQ'
-  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', etc.
+  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', 'BUNQ', or 'Nationwide'
+  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', 'NAT-1', etc.
   Category?: string; // Transaction category (e.g., 'Entertainment', 'Food & Dining')
   OriginalData: RawTransaction; // Keep original for reference
 };
@@ -156,6 +156,14 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     keys.some(k => k.trim() === 'Name' || k.includes('Name')) &&
     keys.some(k => k.trim() === 'Description' || k.includes('Description'))
   );
+  const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
+    keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+    keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+    keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+    keys.some(k => k.trim() === 'Balance' || k.includes('Balance'))
+  );
   
   // Extract description
   let description = '';
@@ -186,6 +194,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // BUNQ: use Name field directly
     const nameKey = keys.find(k => k.trim() === 'Name' || k.includes('Name'));
     description = nameKey ? String(rawTx[nameKey] || '').trim() : '';
+  } else if (isNationwide) {
+    // Nationwide: use Description field directly
+    const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
+    description = descKey ? String(rawTx[descKey] || '').trim() : '';
   } else {
     // Revolut: single Description field
     description = rawTx.Description || rawTx.description || '';
@@ -232,6 +244,21 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     const amountKey = keys.find(k => k.trim() === 'Amount' || k.includes('Amount'));
     if (amountKey) {
       amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
+    }
+  } else if (isNationwide) {
+    // Nationwide: use Paid out (negative) or Paid in (positive), remove £ symbol
+    const paidOutKey = keys.find(k => k.trim() === 'Paid out' || k.includes('Paid out'));
+    const paidInKey = keys.find(k => k.trim() === 'Paid in' || k.includes('Paid in'));
+    
+    const paidOut = paidOutKey ? rawTx[paidOutKey] : '';
+    const paidIn = paidInKey ? rawTx[paidInKey] : '';
+    
+    if (paidOut && String(paidOut).trim()) {
+      // Remove £ symbol and commas, then parse
+      amount = -parseFloat(String(paidOut).replace(/[£,]/g, ''));
+    } else if (paidIn && String(paidIn).trim()) {
+      // Remove £ symbol and commas, then parse
+      amount = parseFloat(String(paidIn).replace(/[£,]/g, ''));
     }
   } else {
     // Revolut: single Amount field (already signed)
@@ -317,6 +344,32 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
       dateStr = String(rawTx[dateKey] || '').trim();
       // BUNQ dates are already in YYYY-MM-DD format
     }
+  } else if (isNationwide) {
+    // Nationwide: use Date field (DD-MMM-YY format, e.g., "29-Dec-14")
+    const dateKey = keys.find(k => k.trim() === 'Date' || k.includes('Date'));
+    if (dateKey) {
+      const dateValue = String(rawTx[dateKey] || '').trim();
+      if (dateValue) {
+        // Parse DD-MMM-YY format (e.g., "29-Dec-14")
+        const parts = dateValue.split('-');
+        if (parts.length === 3) {
+          const day = parts[0].padStart(2, '0');
+          const monthNames: Record<string, string> = {
+            'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+            'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+            'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+          };
+          const month = monthNames[parts[1]] || '01';
+          // Handle 2-digit year: assume 20xx for years < 50, 19xx otherwise
+          let year = parts[2];
+          if (year.length === 2) {
+            const yearNum = parseInt(year, 10);
+            year = yearNum < 50 ? `20${year}` : `19${year}`;
+          }
+          dateStr = `${year}-${month}-${day}`;
+        }
+      }
+    }
   } else {
     // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
     dateStr = (rawTx['Completed Date'] || rawTx['Started Date'] || rawTx.Date || rawTx.date || '').toString();
@@ -340,6 +393,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   } else if (isBUNQ) {
     // BUNQ doesn't have explicit currency field - default to EUR
     currency = 'EUR';
+  } else if (isNationwide) {
+    // Nationwide is a UK bank - default to GBP
+    currency = 'GBP';
   } else {
     currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
   }
@@ -363,7 +419,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : 'Revolut'))),
+    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : 'Revolut')))),
     Account: account,
     Category: category,
     OriginalData: rawTx
@@ -530,7 +586,7 @@ const App: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
-  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0 });
+  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
   const isEnhancingRef = React.useRef<boolean>(false);
   const lastDataLengthRef = React.useRef<number>(0);
@@ -690,7 +746,17 @@ const App: React.FC = () => {
           keys.some(k => k.trim() === 'Description' || k.includes('Description'))
         );
         
-        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : 'Revolut')));
+        // Check for Nationwide (must have: Date, Type, Description, Paid out, Paid in, Balance)
+        const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => k.trim() === 'Type' || k.includes('Type')) &&
+          keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+          keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+          keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+          keys.some(k => k.trim() === 'Balance' || k.includes('Balance'))
+        );
+        
+        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : 'Revolut'))));
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -1563,6 +1629,23 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Revolut</strong>
+                    </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/nwQPNwc.png" 
+                        alt="Nationwide" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Nationwide</strong>
                     </div>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
