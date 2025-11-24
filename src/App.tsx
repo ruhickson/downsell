@@ -620,7 +620,18 @@ function fetchStats(): Record<string, number> {
 }
 
 // Increment stat in localStorage
+// Check if user has consented to cookies
+function hasConsentedToCookies(): boolean {
+  if (typeof window === 'undefined') return false;
+  const consent = localStorage.getItem('cookie-consent');
+  return consent === 'accepted';
+}
+
 function incrementStat(key: string, amount = 1) {
+  // Only track if user has consented to cookies
+  if (!hasConsentedToCookies()) {
+    return;
+  }
   try {
     const stats = fetchStats();
     stats[key] = (stats[key] || 0) + amount;
@@ -646,6 +657,7 @@ const App: React.FC = () => {
   const [hasShownWaitlistModal, setHasShownWaitlistModal] = React.useState<boolean>(false);
   const [showCookieBanner, setShowCookieBanner] = React.useState<boolean>(false);
   const [waitlistEmail, setWaitlistEmail] = React.useState<string>('');
+  const [showThankYou, setShowThankYou] = React.useState<boolean>(false);
 
   // Check cookie consent on mount
   useEffect(() => {
@@ -665,8 +677,11 @@ const App: React.FC = () => {
     localStorage.setItem('cookie-consent', 'rejected');
     localStorage.setItem('cookie-consent-date', new Date().toISOString());
     setShowCookieBanner(false);
-    // Note: Netlify Analytics will still be injected, but user has rejected consent
-    // You may want to disable Netlify Analytics if consent is rejected
+    // Note: Netlify Analytics script is injected server-side by Netlify
+    // We cannot disable it client-side, but our custom tracking functions
+    // will respect the consent and not send data
+    // Netlify Analytics may still collect basic page views, but we've done our best
+    // to disable custom tracking when consent is rejected
   };
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
@@ -886,8 +901,20 @@ const App: React.FC = () => {
             return mergedData;
           });
           
-          // Update uploaded files list
+          // Update uploaded files list (check for duplicates)
           setUploadedFiles(prevFiles => {
+            // Check if this file already exists (by name, size, and lastModified)
+            const isDuplicate = prevFiles.some(existingFile => 
+              existingFile.file.name === file.name &&
+              existingFile.file.size === file.size &&
+              existingFile.file.lastModified === file.lastModified
+            );
+            
+            if (isDuplicate) {
+              console.log(`Skipping duplicate file: ${file.name}`);
+              return prevFiles; // Don't add duplicate
+            }
+            
             const newFile = { file, bankType, rowCount, account };
             return mergeWithExisting ? [...prevFiles, newFile] : [newFile];
           });
@@ -3582,30 +3609,29 @@ const App: React.FC = () => {
 
                         if (response.ok) {
                           const result = await response.json();
-                          // Success (including duplicates) - open broc.fi and close modal
+                          // Success (including duplicates) - close modal and show thank you message
                           if (result.duplicate) {
                             // Email already on waitlist - still show success
                             console.log('Email already on waitlist');
                           }
-                          window.open('https://broc.fi', '_blank');
                           setShowWaitlistModal(false);
                           setWaitlistEmail('');
+                          // Show thank you message
+                          setShowThankYou(true);
+                          // Hide message after 3 seconds
+                          setTimeout(() => {
+                            setShowThankYou(false);
+                          }, 3000);
                         } else {
-                          // Error - show alert but still open broc.fi
+                          // Error - show alert
                           const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
                           console.error('Failed to add signup to waitlist:', errorData);
-                          alert('There was an error adding you to the waitlist, but you can still sign up at broc.fi');
-                          window.open('https://broc.fi', '_blank');
-                          setShowWaitlistModal(false);
-                          setWaitlistEmail('');
+                          alert('There was an error adding you to the waitlist. Please try again.');
                         }
                       } catch (error) {
-                        // Network error - still open broc.fi
+                        // Network error
                         console.error('Error signing up:', error);
-                        alert('There was an error adding you to the waitlist, but you can still sign up at broc.fi');
-                        window.open('https://broc.fi', '_blank');
-                        setShowWaitlistModal(false);
-                        setWaitlistEmail('');
+                        alert('There was an error adding you to the waitlist. Please try again.');
                       }
                     }
                   }}
@@ -3813,6 +3839,31 @@ const App: React.FC = () => {
                 Accept
               </button>
             </div>
+          </div>
+        )}
+        
+        {/* Thank You Message */}
+        {showThankYou && (
+          <div
+            style={{
+              position: 'fixed',
+              bottom: '2rem',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'linear-gradient(135deg, #2d8cff 0%, #1a5fcc 100%)',
+              color: 'white',
+              padding: '1.5rem 2.5rem',
+              borderRadius: '12px',
+              fontSize: '1.5rem',
+              fontWeight: 600,
+              zIndex: 10002,
+              boxShadow: '0 8px 24px rgba(45, 140, 255, 0.5)',
+              animation: 'slideUp 0.5s ease-out, fadeOut 0.5s ease-in 2.5s',
+              animationFillMode: 'forwards',
+              pointerEvents: 'none'
+            }}
+          >
+            thank you! &lt;3
           </div>
         )}
       </div>
