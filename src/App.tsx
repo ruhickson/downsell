@@ -34,6 +34,19 @@ ChartJS.register(
   Filler
 );
 
+// Helper function to get currency symbol
+function getCurrencySymbol(currency: string): string {
+  switch (currency?.toUpperCase()) {
+    case 'GBP':
+      return '£';
+    case 'USD':
+      return '$';
+    case 'EUR':
+    default:
+      return '€';
+  }
+}
+
 // Raw transaction from CSV (can be from any bank)
 type RawTransaction = {
   [key: string]: any;
@@ -47,8 +60,8 @@ type Transaction = {
   Date: string;
   Currency: string;
   Balance?: number;
-  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', 'BUNQ', or 'Nationwide'
-  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', 'NAT-1', etc.
+  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', 'BUNQ', 'Nationwide', or 'PTSB'
+  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', 'NAT-1', 'PTSB-1', etc.
   Category?: string; // Transaction category (e.g., 'Entertainment', 'Food & Dining')
   OriginalData: RawTransaction; // Keep original for reference
 };
@@ -164,6 +177,13 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
     keys.some(k => k.trim() === 'Balance' || k.includes('Balance'))
   );
+  const isPTSB = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isNationwide && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => k.trim() === 'Payee' || k.includes('Payee')) &&
+    keys.some(k => k.trim() === 'Outflow' || k.includes('Outflow')) &&
+    keys.some(k => k.trim() === 'Inflow' || k.includes('Inflow')) &&
+    keys.some(k => (k.trim() === 'Running Balance' || k.includes('Running Balance') || k.includes('Balance')))
+  );
   
   // Extract description
   let description = '';
@@ -198,6 +218,10 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // Nationwide: use Description field directly
     const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
     description = descKey ? String(rawTx[descKey] || '').trim() : '';
+  } else if (isPTSB) {
+    // PTSB: use Payee field directly
+    const payeeKey = keys.find(k => k.trim() === 'Payee' || k.includes('Payee'));
+    description = payeeKey ? String(rawTx[payeeKey] || '').trim() : '';
   } else {
     // Revolut: single Description field
     description = rawTx.Description || rawTx.description || '';
@@ -260,6 +284,21 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
       // Remove £ symbol and commas, then parse
       amount = parseFloat(String(paidIn).replace(/[£,]/g, ''));
     }
+  } else if (isPTSB) {
+    // PTSB: use Outflow (negative) or Inflow (positive)
+    const outflowKey = keys.find(k => k.trim() === 'Outflow' || k.includes('Outflow'));
+    const inflowKey = keys.find(k => k.trim() === 'Inflow' || k.includes('Inflow'));
+    
+    const outflow = outflowKey ? rawTx[outflowKey] : '';
+    const inflow = inflowKey ? rawTx[inflowKey] : '';
+    
+    if (outflow && String(outflow).trim()) {
+      // Remove commas, then parse as negative
+      amount = -parseFloat(String(outflow).replace(/,/g, ''));
+    } else if (inflow && String(inflow).trim()) {
+      // Remove commas, then parse as positive
+      amount = parseFloat(String(inflow).replace(/,/g, ''));
+    }
   } else {
     // Revolut: single Amount field (already signed)
     amount = parseFloat(rawTx.Amount || rawTx.amount || '0');
@@ -285,6 +324,15 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     type = typeKey ? String(rawTx[typeKey] || '').toUpperCase() : '';
   } else if (isBUNQ) {
     // BUNQ doesn't have explicit transaction type - infer from Amount sign
+    if (amount < 0) {
+      type = 'DEBIT';
+    } else if (amount > 0) {
+      type = 'CREDIT';
+    } else {
+      type = 'UNKNOWN';
+    }
+  } else if (isPTSB) {
+    // PTSB doesn't have explicit transaction type - infer from Outflow/Inflow
     if (amount < 0) {
       type = 'DEBIT';
     } else if (amount > 0) {
@@ -396,6 +444,9 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   } else if (isNationwide) {
     // Nationwide is a UK bank - default to GBP
     currency = 'GBP';
+  } else if (isPTSB) {
+    // PTSB is an Irish bank - default to EUR
+    currency = 'EUR';
   } else {
     currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
   }
@@ -419,7 +470,7 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : 'Revolut')))),
+    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : (isPTSB ? 'PTSB' : 'Revolut'))))),
     Account: account,
     Category: category,
     OriginalData: rawTx
@@ -586,11 +637,37 @@ const App: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
-  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0 });
+  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0, PTSB: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
   const isEnhancingRef = React.useRef<boolean>(false);
   const lastDataLengthRef = React.useRef<number>(0);
   const [isClassifying, setIsClassifying] = React.useState<boolean>(false);
+  const [showWaitlistModal, setShowWaitlistModal] = React.useState<boolean>(false);
+  const [hasShownWaitlistModal, setHasShownWaitlistModal] = React.useState<boolean>(false);
+  const [showCookieBanner, setShowCookieBanner] = React.useState<boolean>(false);
+  const [waitlistEmail, setWaitlistEmail] = React.useState<string>('');
+
+  // Check cookie consent on mount
+  useEffect(() => {
+    const consent = localStorage.getItem('cookie-consent');
+    if (!consent) {
+      setShowCookieBanner(true);
+    }
+  }, []);
+
+  const handleAcceptCookies = () => {
+    localStorage.setItem('cookie-consent', 'accepted');
+    localStorage.setItem('cookie-consent-date', new Date().toISOString());
+    setShowCookieBanner(false);
+  };
+
+  const handleRejectCookies = () => {
+    localStorage.setItem('cookie-consent', 'rejected');
+    localStorage.setItem('cookie-consent-date', new Date().toISOString());
+    setShowCookieBanner(false);
+    // Note: Netlify Analytics will still be injected, but user has rejected consent
+    // You may want to disable Netlify Analytics if consent is rejected
+  };
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
   const [transactionSearch, setTransactionSearch] = useState<string>('');
@@ -749,14 +826,23 @@ const App: React.FC = () => {
         // Check for Nationwide (must have: Date, Type, Description, Paid out, Paid in, Balance)
         const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
           keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
-          keys.some(k => k.trim() === 'Type' || k.includes('Type')) &&
+          keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
           keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
           keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
           keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
           keys.some(k => k.trim() === 'Balance' || k.includes('Balance'))
         );
         
-        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : 'Revolut'))));
+        // Check for PTSB (must have: Date, Payee, Outflow, Inflow, Running Balance)
+        const isPTSB = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isNationwide && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => k.trim() === 'Payee' || k.includes('Payee')) &&
+          keys.some(k => k.trim() === 'Outflow' || k.includes('Outflow')) &&
+          keys.some(k => k.trim() === 'Inflow' || k.includes('Inflow')) &&
+          keys.some(k => (k.trim() === 'Running Balance' || k.includes('Running Balance') || k.includes('Balance')))
+        );
+        
+        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : (isPTSB ? 'PTSB' : 'Revolut')))));
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -770,6 +856,10 @@ const App: React.FC = () => {
             ? `N26-${newCounters[bankType]}`
             : bankType === 'BUNQ'
             ? `BUN-${newCounters[bankType]}`
+            : bankType === 'Nationwide'
+            ? `NAT-${newCounters[bankType]}`
+            : bankType === 'PTSB'
+            ? `PTSB-${newCounters[bankType]}`
             : `REV-${newCounters[bankType]}`;
           
           // Normalize all transactions with account identifier
@@ -847,6 +937,14 @@ const App: React.FC = () => {
     if (inputRef.current) {
       inputRef.current.value = '';
     }
+    
+    // Show waitlist modal after processing (only once per session)
+    if (!hasShownWaitlistModal) {
+      setTimeout(() => {
+        setShowWaitlistModal(true);
+        setHasShownWaitlistModal(true);
+      }, 1000); // Small delay to ensure processing is complete
+    }
     // Enhancement will be triggered by useEffect when csvData updates
   };
 
@@ -879,6 +977,14 @@ const App: React.FC = () => {
     for (let i = 0; i < fileArray.length; i++) {
       await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
     }
+    
+    // Show waitlist modal after processing (only once per session)
+    if (!hasShownWaitlistModal) {
+      setTimeout(() => {
+        setShowWaitlistModal(true);
+        setHasShownWaitlistModal(true);
+      }, 1000); // Small delay to ensure processing is complete
+    }
     // Enhancement will be triggered by useEffect when csvData updates
   };
 
@@ -901,6 +1007,17 @@ const App: React.FC = () => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
   }, [subscriptions]);
+
+  // Get primary currency (most common currency in transactions)
+  const primaryCurrency = useMemo(() => {
+    if (csvData.length === 0) return 'EUR';
+    const currencyCounts: Record<string, number> = {};
+    csvData.forEach(tx => {
+      const currency = tx.Currency || 'EUR';
+      currencyCounts[currency] = (currencyCounts[currency] || 0) + 1;
+    });
+    return Object.entries(currencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'EUR';
+  }, [csvData]);
 
   const totalOutgoing = useMemo(() => {
     return csvData.reduce((sum, tx) => {
@@ -1105,14 +1222,33 @@ const App: React.FC = () => {
     doc.text('Financial Analysis Report', margin, y);
     y += 35;
     
+    // Account summary
+    if (uploadedFiles.length > 0) {
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      const accountList = uploadedFiles.map(f => `${f.bankType} (${f.account})`).join(', ');
+      const accountText = `Analyzed ${uploadedFiles.length} file${uploadedFiles.length > 1 ? 's' : ''}: ${accountList}`;
+      const accountLines = doc.splitTextToSize(accountText, contentWidth);
+      doc.text(accountLines, margin, y);
+      y += accountLines.length * 12 + 10;
+    }
+    
+    // Currency info
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Currency: ${primaryCurrency} (${getCurrencySymbol(primaryCurrency)})`, margin, y);
+    y += 15;
+    
     // Three paragraphs
     doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'normal');
     
-    const paragraph1 = 'This comprehensive analysis examines your bank statement transactions to identify recurring payments and subscription patterns. By analyzing transaction frequency, amounts, and descriptions, the system categorizes potential subscriptions and calculates confidence scores based on payment regularity, consistency, and subscription-related keywords. The analysis filters out one-time transactions and transfers to focus on recurring expenses that may represent ongoing subscriptions or services.';
-    const paragraph2 = 'The system evaluates each transaction group by calculating statistical measures including average payment amounts, standard deviation, and payment frequency. Transactions are classified by frequency labels such as Daily, Weekly, Monthly, Quarterly, or Irregular based on the time span and number of occurrences. This helps distinguish between true recurring subscriptions and occasional purchases, providing you with a clear picture of your ongoing financial commitments.';
-    const paragraph3 = 'The analysis also tracks spending patterns over time, comparing total outgoing expenses against identified subscription costs. This enables you to understand what portion of your spending is dedicated to recurring services versus one-time purchases. By identifying these patterns, you can make informed decisions about which subscriptions to keep, optimize, or cancel to better manage your finances and reduce unnecessary recurring expenses.';
+    const paragraph1 = 'This comprehensive analysis examines your bank statement transactions from multiple accounts to identify recurring payments and subscription patterns. By analyzing transaction frequency, amounts, descriptions, and categories, the system categorizes potential subscriptions and calculates confidence scores based on payment regularity, consistency, and subscription-related keywords. The analysis filters out one-time transactions and transfers to focus on recurring expenses that may represent ongoing subscriptions or services.';
+    const paragraph2 = 'The system evaluates each transaction group by calculating statistical measures including average payment amounts, standard deviation, and payment frequency. Transactions are classified by frequency labels such as Daily, Weekly, Monthly, Quarterly, or Irregular based on the time span and number of occurrences. Each transaction is also automatically categorized (e.g., Entertainment, Food & Dining, Utilities) to help you understand your spending patterns across different areas of your life.';
+    const paragraph3 = 'The analysis tracks spending patterns over time, comparing total outgoing expenses against identified subscription costs. This enables you to understand what portion of your spending is dedicated to recurring services versus one-time purchases. By identifying these patterns across multiple accounts, you can make informed decisions about which subscriptions to keep, optimize, or cancel to better manage your finances and reduce unnecessary recurring expenses.';
     
     const lines1 = doc.splitTextToSize(paragraph1, contentWidth);
     doc.text(lines1, margin, y);
@@ -1126,42 +1262,85 @@ const App: React.FC = () => {
     doc.text(lines3, margin, y);
     y += lines3.length * 14 + 25;
     
+    // Category breakdown section (if categories exist)
+    const categorySpending: Record<string, number> = {};
+    csvData.forEach(tx => {
+      if (tx.Amount < 0 && tx.Category) {
+        categorySpending[tx.Category] = (categorySpending[tx.Category] || 0) + Math.abs(tx.Amount);
+      }
+    });
+    const hasCategories = Object.keys(categorySpending).length > 0 && 
+                          !Object.keys(categorySpending).every(cat => cat === 'Other' || !cat);
+    
+    if (hasCategories && y > 600) {
+      doc.addPage();
+      y = 40;
+    }
+    
+    if (hasCategories) {
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Spending by Category', margin, y);
+      y += 20;
+      
+      // Sort categories by spend
+      const sortedCategories = Object.entries(categorySpending)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10); // Top 10 categories
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      sortedCategories.forEach(([category, amount]) => {
+        if (y > 750) {
+          doc.addPage();
+          y = 40;
+        }
+        doc.text(`${category}:`, margin, y);
+        doc.text(`${getCurrencySymbol(primaryCurrency)}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, margin + 200, y);
+        y += 15;
+      });
+      
+      y += 15;
+    }
+    
     // Top 15 Outgoings section
     if (y > 650) {
       doc.addPage();
       y = 40;
     }
     
-      doc.setFontSize(16);
+    doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
     doc.text('Top 15 Outgoings', margin, y);
     y += 20;
     
-    // Table header
+    // Table header (no gridlines)
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(45, 140, 255);
     const col1 = margin;
-    const col2 = margin + 250;
-    const col3 = margin + 380;
-    const col4 = margin + 480;
+    const col2 = margin + 200;
+    const col3 = margin + 320;
+    const col4 = margin + 400;
+    const col5 = margin + 480;
     
     doc.text('Name', col1, y);
-    doc.text('Total Spend', col2, y);
-    doc.text('Frequency', col3, y);
-    doc.text('Payments', col4, y);
-    y += 3;
-    doc.setDrawColor(45, 140, 255);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 12;
+    doc.text('Category', col2, y);
+    doc.text('Total Spend', col3, y);
+    doc.text('Frequency', col4, y);
+    doc.text('Payments', col5, y);
+    y += 15;
     
-    // Table rows
+    // Table rows (no gridlines)
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
     
-    top15Outgoings.forEach((sub, index) => {
+    top15Outgoings.forEach((sub) => {
       if (y > 750) {
         doc.addPage();
         y = 40;
@@ -1170,26 +1349,42 @@ const App: React.FC = () => {
         doc.setTextColor(45, 140, 255);
         doc.setFontSize(10);
         doc.text('Name', col1, y);
-        doc.text('Total Spend', col2, y);
-        doc.text('Frequency', col3, y);
-        doc.text('Payments', col4, y);
+        doc.text('Category', col2, y);
+        doc.text('Total Spend', col3, y);
+        doc.text('Frequency', col4, y);
+        doc.text('Payments', col5, y);
         y += 15;
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(9);
       }
       
-      const nameLines = doc.splitTextToSize(sub.description, 240);
-      doc.text(nameLines, col1, y);
-      doc.text(`€${(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, col2, y);
-      doc.text(sub.frequencyLabel, col3, y);
-      doc.text(sub.count.toString(), col4, y);
-      y += Math.max(nameLines.length * 12, 15);
+      // Get category and accounts from csvData
+      const firstTx = csvData.find(tx => tx.Description === sub.description);
+      const category = firstTx?.Category || 'Other';
+      const accounts = accountsByDescription[sub.description] || [];
+      const accountStr = accounts.length > 0 ? accounts.join(', ') : '';
       
-      if (index < top15Outgoings.length - 1) {
-        doc.setDrawColor(200, 200, 200);
-        doc.line(margin, y - 3, pageWidth - margin, y - 3);
+      const nameLines = doc.splitTextToSize(sub.description, 190);
+      const categoryLines = doc.splitTextToSize(category, 110);
+      const accountLines = accountStr ? doc.splitTextToSize(`(${accountStr})`, 190) : [];
+      
+      doc.text(nameLines, col1, y);
+      doc.text(categoryLines, col2, y);
+      doc.text(`${getCurrencySymbol(primaryCurrency)}${(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, col3, y);
+      doc.text(sub.frequencyLabel, col4, y);
+      doc.text(sub.count.toString(), col5, y);
+      
+      // Add account info below name if available
+      if (accountLines.length > 0) {
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(accountLines, col1, y + 12);
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
       }
+      
+      y += Math.max(nameLines.length * 12, categoryLines.length * 12, accountLines.length * 10, 15) + 5;
     });
     
     y += 20;
@@ -1233,7 +1428,7 @@ const App: React.FC = () => {
       const maxTotal = Math.max(...spendOverTime.totalSpend, ...spendOverTime.subscriptionSpend);
       const maxValue = maxTotal * 1.1;
       
-      // Draw axes
+      // Draw axes (no gridlines)
       chartCtx.strokeStyle = '#333333';
       chartCtx.lineWidth = 2;
       chartCtx.beginPath();
@@ -1308,7 +1503,7 @@ const App: React.FC = () => {
       for (let i = 0; i <= 5; i++) {
         const value = (maxValue / 5) * (5 - i);
         const yPos = chartY + (chartAreaHeight / 5) * i;
-        chartCtx.fillText(`€${Math.round(value).toLocaleString()}`, chartX - 10, yPos + 4);
+        chartCtx.fillText(`${getCurrencySymbol(primaryCurrency)}${Math.round(value).toLocaleString()}`, chartX - 10, yPos + 4);
       }
       
       // Legend
@@ -1647,6 +1842,23 @@ const App: React.FC = () => {
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Nationwide</strong>
                     </div>
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.5rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/sHapB2W.png" 
+                        alt="Permanent TSB" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Permanent TSB</strong>
+                    </div>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
                     We're expanding to support more banks in the coming weeks.
@@ -1744,11 +1956,11 @@ const App: React.FC = () => {
                   </div>
                   <div className="big-number-tile">
                     <div className="big-number-label">Total Spend</div>
-                    <div className="big-number-value">€{totalOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div className="big-number-value">{getCurrencySymbol(primaryCurrency)}{totalOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                   </div>
                   <div className="big-number-tile">
                     <div className="big-number-label">Subscription Spend</div>
-                    <div className="big-number-value">€{totalSubscriptions.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div className="big-number-value">{getCurrencySymbol(primaryCurrency)}{totalSubscriptions.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                   </div>
                 </div>
                 {subscriptions.length > 0 && (
@@ -1793,7 +2005,7 @@ const App: React.FC = () => {
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value}`
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value}`
                               },
                               grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
@@ -1945,13 +2157,13 @@ const App: React.FC = () => {
                             y: {
                               title: {
                                 display: true,
-                                text: 'Cumulative Average Spend (€)',
+                                text: `Cumulative Average Spend (${getCurrencySymbol(primaryCurrency)})`,
                                 color: 'white',
                                 font: { weight: 'bold' }
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value}`
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value}`
                               },
                               grid: { color: 'rgba(255,255,255,0.1)' }
                             },
@@ -1965,7 +2177,7 @@ const App: React.FC = () => {
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value}`
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value}`
                               },
                               grid: {
                                 drawOnChartArea: false
@@ -2089,7 +2301,7 @@ const App: React.FC = () => {
                                   <tbody>
                                     <tr>
                                       <td>Total Spent:</td>
-                                      <td>€{(-sub.total).toFixed(2)}</td>
+                                      <td>{getCurrencySymbol(primaryCurrency)}{(-sub.total).toFixed(2)}</td>
                                     </tr>
                                     <tr>
                                       <td>Number of Payments:</td>
@@ -2097,11 +2309,11 @@ const App: React.FC = () => {
                                     </tr>
                                     <tr>
                                       <td>Average Payment:</td>
-                                      <td>€{(-sub.average).toFixed(2)}</td>
+                                      <td>{getCurrencySymbol(primaryCurrency)}{(-sub.average).toFixed(2)}</td>
                                     </tr>
                                     <tr>
                                       <td>Maximum Payment:</td>
-                                      <td>€{(-sub.maxAmount).toFixed(2)}</td>
+                                      <td>{getCurrencySymbol(primaryCurrency)}{(-sub.maxAmount).toFixed(2)}</td>
                                     </tr>
                                     <tr>
                                       <td>Frequency:</td>
@@ -2256,7 +2468,7 @@ const App: React.FC = () => {
                           {top15Outgoings.map((sub, index) => (
                             <tr key={sub.description} style={{ borderBottom: index < top15Outgoings.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
                               <td style={{ padding: '1rem', color: 'white' }}>{sub.description}</td>
-                              <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>{getCurrencySymbol(primaryCurrency)}{(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                               <td style={{ padding: '1rem', textAlign: 'center', color: '#00d9ff' }}>{sub.frequencyLabel}</td>
                               <td style={{ padding: '1rem', textAlign: 'right', color: 'white' }}>{sub.count}</td>
                             </tr>
@@ -2329,7 +2541,7 @@ const App: React.FC = () => {
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value.toLocaleString()}`,
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value.toLocaleString()}`,
                               },
                               grid: { color: 'rgba(255, 255, 255, 0.1)' },
                             },
@@ -2771,11 +2983,11 @@ const App: React.FC = () => {
                                   color: isCredit ? '#4cc9f0' : 'white', 
                                   fontWeight: 500 
                                 }}>
-                                  {transaction.Amount >= 0 ? '+' : ''}€{Math.abs(transaction.Amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {transaction.Amount >= 0 ? '+' : ''}{getCurrencySymbol(transaction.Currency)}{Math.abs(transaction.Amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
                                 <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>
                                   {transaction.Balance !== undefined && transaction.Balance !== 0 
-                                    ? `€${transaction.Balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                    ? `${getCurrencySymbol(transaction.Currency)}${transaction.Balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
                                     : '-'}
                                 </td>
                               </tr>
@@ -3147,13 +3359,16 @@ const App: React.FC = () => {
                       9. Cookies and Tracking
                     </h2>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>Local Storage:</strong> We use your browser's local storage (not cookies) to store anonymous usage statistics. This data is stored locally on your device and is not transmitted to our servers.
+                      <strong style={{ color: 'white' }}>Local Storage:</strong> We use your browser's local storage (not cookies) to store anonymous usage statistics and category caching. This data is stored locally on your device and is not transmitted to our servers.
                     </p>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>No Tracking Cookies:</strong> We do not use tracking cookies, analytics cookies, or any other tracking technologies that monitor your behavior across websites.
+                      <strong style={{ color: 'white' }}>Netlify Analytics:</strong> We use Netlify Analytics to collect aggregate, anonymized usage statistics about how visitors interact with our site. Netlify Analytics uses cookies to track page views and user interactions. This helps us understand which features are most used and improve the user experience. Netlify Analytics is privacy-focused and does not collect personally identifiable information. For more information, see <a href="https://www.netlify.com/legal/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>Netlify's Privacy Policy</a>.
+                    </p>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Cookie Consent:</strong> When you first visit our site, we will ask for your consent to use analytics cookies. You can accept or reject these cookies. Your choice will be remembered for future visits. You can change your cookie preferences at any time by clearing your browser's local storage.
                     </p>
                     <p>
-                      <strong style={{ color: 'white' }}>No Third-Party Analytics:</strong> We do not use Google Analytics, Facebook Pixel, or any other third-party analytics services.
+                      <strong style={{ color: 'white' }}>No Third-Party Analytics:</strong> We do not use Google Analytics, Facebook Pixel, or any other third-party analytics services beyond Netlify Analytics.
                     </p>
                   </section>
 
@@ -3230,6 +3445,376 @@ const App: React.FC = () => {
         </div>
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+        
+        {/* Waitlist Modal */}
+        {showWaitlistModal && (
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: '1rem'
+            }}
+            onClick={() => setShowWaitlistModal(false)}
+          >
+            <div 
+              style={{
+                background: 'linear-gradient(135deg, #1a2332 0%, #2a3b4c 100%)',
+                borderRadius: '16px',
+                padding: '2.5rem',
+                maxWidth: '500px',
+                width: '100%',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                border: '2px solid rgba(45, 140, 255, 0.3)',
+                position: 'relative',
+                textAlign: 'center'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setShowWaitlistModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                ×
+              </button>
+              
+              {/* Logo */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <img 
+                  src="/broc_favicon1.png" 
+                  alt="Broc.fi Logo" 
+                  style={{ 
+                    width: '120px', 
+                    height: '120px', 
+                    objectFit: 'contain',
+                    filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))'
+                  }} 
+                />
+              </div>
+              
+              {/* Text */}
+              <p style={{
+                color: 'white',
+                fontSize: '1.1rem',
+                lineHeight: 1.6,
+                marginBottom: '1.5rem',
+                fontWeight: 400
+              }}>
+                Psst, if you want the ultimate advantage in autonomous, agentic personal financial management, sign up here
+              </p>
+              
+              {/* Email Input */}
+              <input
+                type="email"
+                value={waitlistEmail}
+                onChange={(e) => setWaitlistEmail(e.target.value)}
+                placeholder="Enter your email address"
+                style={{
+                  width: '100%',
+                  padding: '0.875rem 1rem',
+                  borderRadius: '8px',
+                  border: '2px solid rgba(255, 255, 255, 0.2)',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  fontSize: '1rem',
+                  marginBottom: '1.5rem',
+                  outline: 'none',
+                  transition: 'all 0.3s ease',
+                  boxSizing: 'border-box'
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#2d8cff';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              />
+              
+              {/* Buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* Sign up Button */}
+                <button
+                  onClick={async () => {
+                    if (waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)) {
+                      trackButtonClick('Sign Up', { location: 'waitlist_modal', email: waitlistEmail });
+                      
+                      try {
+                        // Call Netlify Function to add to Google Sheet
+                        const response = await fetch('/.netlify/functions/signup-waitlist', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ email: waitlistEmail }),
+                        });
+
+                        if (response.ok) {
+                          const result = await response.json();
+                          // Success (including duplicates) - open broc.fi and close modal
+                          if (result.duplicate) {
+                            // Email already on waitlist - still show success
+                            console.log('Email already on waitlist');
+                          }
+                          window.open('https://broc.fi', '_blank');
+                          setShowWaitlistModal(false);
+                          setWaitlistEmail('');
+                        } else {
+                          // Error - show alert but still open broc.fi
+                          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                          console.error('Failed to add signup to waitlist:', errorData);
+                          alert('There was an error adding you to the waitlist, but you can still sign up at broc.fi');
+                          window.open('https://broc.fi', '_blank');
+                          setShowWaitlistModal(false);
+                          setWaitlistEmail('');
+                        }
+                      } catch (error) {
+                        // Network error - still open broc.fi
+                        console.error('Error signing up:', error);
+                        alert('There was an error adding you to the waitlist, but you can still sign up at broc.fi');
+                        window.open('https://broc.fi', '_blank');
+                        setShowWaitlistModal(false);
+                        setWaitlistEmail('');
+                      }
+                    }
+                  }}
+                  disabled={!waitlistEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)}
+                  style={{
+                    background: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)
+                      ? 'linear-gradient(135deg, #2d8cff 0%, #1a5fcc 100%)'
+                      : 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    border: 'none',
+                    padding: '1rem 2rem',
+                    borderRadius: '8px',
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                    cursor: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail) ? 'pointer' : 'not-allowed',
+                    width: '100%',
+                    boxShadow: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)
+                      ? '0 4px 12px rgba(45, 140, 255, 0.4)'
+                      : 'none',
+                    transition: 'all 0.3s ease',
+                    opacity: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail) ? 1 : 0.5
+                  }}
+                  onMouseEnter={(e) => {
+                    if (waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)) {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 16px rgba(45, 140, 255, 0.6)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)) {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 140, 255, 0.4)';
+                    }
+                  }}
+                >
+                  Sign up
+                </button>
+                
+                {/* What is Broc? Button */}
+                <button
+                  onClick={() => {
+                    trackButtonClick('What is Broc?', { location: 'waitlist_modal' });
+                    window.open('https://broc.fi', '_blank');
+                  }}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    padding: '0.875rem 2rem',
+                    borderRadius: '8px',
+                    fontSize: '1rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    width: '100%',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  }}
+                >
+                  What is Broc?
+                </button>
+                
+                {/* I'm already signed up Button */}
+                <button
+                  onClick={() => {
+                    trackButtonClick('Already Signed Up', { location: 'waitlist_modal' });
+                    setShowWaitlistModal(false);
+                    setWaitlistEmail('');
+                  }}
+                  style={{
+                    background: 'transparent',
+                    color: '#bfc9da',
+                    border: 'none',
+                    padding: '0.75rem 2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.95rem',
+                    fontWeight: 400,
+                    cursor: 'pointer',
+                    width: '100%',
+                    transition: 'all 0.3s ease',
+                    textDecoration: 'underline'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'white';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#bfc9da';
+                  }}
+                >
+                  I'm already signed up
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Cookie Consent Banner */}
+        {showCookieBanner && (
+          <div 
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'linear-gradient(135deg, #1a2332 0%, #2a3b4c 100%)',
+              borderTop: '2px solid rgba(45, 140, 255, 0.3)',
+              padding: '1.5rem',
+              zIndex: 10001,
+              boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '1rem',
+              maxWidth: '100%'
+            }}
+          >
+            <div style={{ flex: '1', minWidth: '300px' }}>
+              <p style={{ 
+                color: 'white', 
+                margin: 0, 
+                marginBottom: '0.5rem',
+                fontSize: '1rem',
+                fontWeight: 600
+              }}>
+                🍪 Cookie Consent
+              </p>
+              <p style={{ 
+                color: '#bfc9da', 
+                margin: 0, 
+                fontSize: '0.9rem',
+                lineHeight: 1.5
+              }}>
+                We use Netlify Analytics cookies to collect aggregate, anonymized usage statistics to improve our site. 
+                This helps us understand how visitors use Downsell. No personally identifiable information is collected. 
+                <a 
+                  href="#privacy" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveTab('Privacy Policy');
+                    setShowCookieBanner(false);
+                  }}
+                  style={{ color: '#2d8cff', textDecoration: 'none', marginLeft: '0.25rem' }}
+                >
+                  Learn more
+                </a>
+              </p>
+            </div>
+            <div style={{ 
+              display: 'flex', 
+              gap: '0.75rem',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={handleRejectCookies}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  fontSize: '0.95rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                Reject
+              </button>
+              <button
+                onClick={handleAcceptCookies}
+                style={{
+                  background: 'linear-gradient(135deg, #2d8cff 0%, #1a5fcc 100%)',
+                  border: 'none',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(45, 140, 255, 0.4)',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(45, 140, 255, 0.6)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 140, 255, 0.4)';
+                }}
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        )}
       </div>
   );
 };

@@ -6,6 +6,7 @@ interface Transaction {
   Amount: number;
   Date: string;
   Category?: string;
+  Currency?: string;
 }
 
 interface SankeyDiagramProps {
@@ -13,10 +14,33 @@ interface SankeyDiagramProps {
   transactions?: Transaction[]; // Optional: full transaction data for breakdown
 }
 
+// Helper function to get currency symbol
+function getCurrencySymbol(currency: string): string {
+  switch (currency?.toUpperCase()) {
+    case 'GBP':
+      return '£';
+    case 'USD':
+      return '$';
+    case 'EUR':
+    default:
+      return '€';
+  }
+}
+
 const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data, transactions = [] }) => {
   const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
   // Calculate total spending
   const totalSpending = Object.values(data).reduce((sum, val) => sum + val, 0);
+  
+  // Get primary currency (most common currency in transactions)
+  const primaryCurrency = transactions.length > 0 ? (() => {
+    const currencyCounts: Record<string, number> = {};
+    transactions.forEach(tx => {
+      const currency = tx.Currency || 'EUR';
+      currencyCounts[currency] = (currencyCounts[currency] || 0) + 1;
+    });
+    return Object.entries(currencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'EUR';
+  })() : 'EUR';
   
   if (totalSpending === 0) {
     return <div style={{ color: '#888', textAlign: 'center', padding: '2rem' }}>No spending data available</div>;
@@ -142,7 +166,7 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data, transactions = [] }
           fontSize="14"
           opacity={0.95}
         >
-          €{totalSpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {getCurrencySymbol(primaryCurrency)}{totalSpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </text>
 
         {/* Draw category nodes - make them bigger and better spaced */}
@@ -196,7 +220,7 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data, transactions = [] }
                 opacity={0.95}
                 style={{ cursor: 'pointer', pointerEvents: 'none' }}
               >
-                €{value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({percentage}%)
+                {getCurrencySymbol(primaryCurrency)}{value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ({percentage}%)
               </text>
               {/* Expand/collapse indicator */}
               <text
@@ -299,10 +323,10 @@ const SankeyDiagram: React.FC<SankeyDiagramProps> = ({ data, transactions = [] }
                         <td style={{ padding: '0.75rem', color: 'white' }}>{item.description}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'right', color: '#bfc9da' }}>{item.count}</td>
                         <td style={{ padding: '0.75rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>
-                          €{item.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {getCurrencySymbol(primaryCurrency)}{item.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                         <td style={{ padding: '0.75rem', textAlign: 'right', color: '#bfc9da' }}>
-                          €{(item.total / item.count).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          {getCurrencySymbol(primaryCurrency)}{(item.total / item.count).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
                       </tr>
                     ))}

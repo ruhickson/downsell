@@ -1,0 +1,50 @@
+{
+  "bank": "PTSB",
+  "file_pattern": "*.csv",
+  "columns": [
+    {
+      "name": "Date",
+      "type": "date",
+      "format": "DD/MM/YYYY",
+      "description": "Transaction date",
+      "required": true,
+      "examples": ["15/07/2025", "01/01/2024"]
+    },
+    {
+      "name": "Payee",
+      "type": "string",
+      "description": "Merchant or transaction description",
+      "required": true,
+      "examples": ["TESCO STORES", "AMAZON", "NETFLIX"]
+    },
+    {
+      "name": "Outflow",
+      "type": "decimal",
+      "description": "Amount paid out (debits, may be empty)",
+      "required": false,
+      "examples": ["10.00", ""]
+    },
+    {
+      "name": "Inflow",
+      "type": "decimal",
+      "description": "Amount paid in (credits, may be empty)",
+      "required": false,
+      "examples": ["", "100.00"]
+    },
+    {
+      "name": "Running Balance",
+      "type": "decimal",
+      "description": "Account balance after transaction",
+      "required": true,
+      "examples": ["1234.56"]
+    }
+  ],
+  "notes": [
+    "PTSB is an Irish bank, so amounts are typically in EUR (Euros)",
+    "Outflow is for debits (negative transactions), Inflow is for credits (positive transactions)",
+    "One of Outflow or Inflow will be empty for each transaction",
+    "Dates are in DD/MM/YYYY format",
+    "Payee field contains merchant names or transaction details"
+  ]
+}
+

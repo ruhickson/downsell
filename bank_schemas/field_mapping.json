@@ -7,7 +7,8 @@
       "n26": "Booking Date",
       "bunq": "Date",
       "nationwide": "Date",
-      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB, BOI, and Nationwide use date format (DD/MM/YYYY). N26 and BUNQ use ISO date format (YYYY-MM-DD). Use Completed Date for Revolut, Posted Transactions Date for AIB, Date for BOI/BUNQ/Nationwide, Booking Date for N26."
+      "ptsb": "Date",
+      "notes": "Revolut uses ISO datetime format (YYYY-MM-DD HH:MM:SS), AIB, BOI, Nationwide, and PTSB use date format (DD/MM/YYYY). N26 and BUNQ use ISO date format (YYYY-MM-DD). Use Completed Date for Revolut, Posted Transactions Date for AIB, Date for BOI/BUNQ/Nationwide/PTSB, Booking Date for N26."
     },
     "description": {
       "revolut": "Description",
@@ -16,7 +17,8 @@
       "n26": "Partner Name",
       "bunq": "Name",
       "nationwide": "Description",
-      "notes": "For AIB, use only Description1 (prefixes removed). For BOI, use Details field directly. For N26, use Partner Name field directly. For BUNQ, use Name field directly. For Nationwide, use Description field directly."
+      "ptsb": "Payee",
+      "notes": "For AIB, use only Description1 (prefixes removed). For BOI, use Details field directly. For N26, use Partner Name field directly. For BUNQ, use Name field directly. For Nationwide, use Description field directly. For PTSB, use Payee field directly."
     },
     "amount": {
       "revolut": "Amount",
@@ -25,7 +27,8 @@
       "n26": "Amount (EUR)",
       "bunq": "Amount",
       "nationwide": ["Paid out", "Paid in"],
-      "notes": "Revolut, N26, and BUNQ use single Amount field (negative for debits, positive for credits). AIB, BOI, and Nationwide use separate Debit/Credit or Paid out/Paid in fields (one will be empty). For AIB/BOI/Nationwide: if Debit/Paid out exists, use negative value; if Credit/Paid in exists, use positive value. Remove commas from amounts. Note: Nationwide amounts are in GBP."
+      "ptsb": ["Outflow", "Inflow"],
+      "notes": "Revolut, N26, and BUNQ use single Amount field (negative for debits, positive for credits). AIB, BOI, Nationwide, and PTSB use separate Debit/Credit or Paid out/Paid in or Outflow/Inflow fields (one will be empty). For AIB/BOI/Nationwide/PTSB: if Debit/Paid out/Outflow exists, use negative value; if Credit/Paid in/Inflow exists, use positive value. Remove commas from amounts. Note: Nationwide amounts are in GBP, PTSB amounts are in EUR."
     },
     "currency": {
       "revolut": "Currency",
@@ -34,7 +37,8 @@
       "n26": "EUR",
       "bunq": "EUR",
       "nationwide": "GBP",
-      "notes": "Revolut and AIB have explicit currency fields. BOI, N26, and BUNQ typically use EUR (default). Nationwide is a UK bank and uses GBP (British Pounds). N26 exports show amounts in EUR in 'Amount (EUR)' field."
+      "ptsb": "EUR",
+      "notes": "Revolut and AIB have explicit currency fields. BOI, N26, BUNQ, and PTSB typically use EUR (default). Nationwide is a UK bank and uses GBP (British Pounds). N26 exports show amounts in EUR in 'Amount (EUR)' field."
     },
     "balance": {
       "revolut": "Balance",
@@ -108,6 +112,15 @@
       ],
       "file_pattern": "*.csv",
       "detection_notes": "Nationwide format has 'Date', 'Type', 'Description', 'Paid out', 'Paid in', 'Balance' columns. Paid out is for debits, Paid in is for credits (one will be empty). Dates are in DD/MM/YYYY format. Amounts are in GBP (British Pounds)."
+    },
+    "ptsb": {
+      "required_columns": ["Date", "Payee", "Outflow", "Inflow", "Running Balance"],
+      "unique_identifiers": [
+        "Date",
+        "Payee"
+      ],
+      "file_pattern": "*.csv",
+      "detection_notes": "PTSB format has 'Date', 'Payee', 'Outflow', 'Inflow', 'Running Balance' columns. Outflow is for debits, Inflow is for credits (one will be empty). Dates are in DD/MM/YYYY format. Amounts are in EUR (Euros)."
     }
   },
   "processing_notes": {
@@ -146,6 +159,12 @@
       "amount_parsing": "If Paid out exists and is not empty, use negative value. If Paid in exists and is not empty, use positive value. One will always be empty. Remove commas from amounts. Note: amounts are in GBP.",
       "description_parsing": "Use Description field directly. Trim whitespace.",
       "filtering": "Type field includes values like 'Direct Debit', 'Card Payment', 'Faster Payment'. Filter based on Type if needed."
+    },
+    "ptsb": {
+      "date_parsing": "Parse as DD/MM/YYYY format. Convert to standard date format (YYYY-MM-DD).",
+      "amount_parsing": "If Outflow exists and is not empty, use negative value. If Inflow exists and is not empty, use positive value. One will always be empty. Remove commas from amounts. Note: amounts are in EUR.",
+      "description_parsing": "Use Payee field directly. Trim whitespace.",
+      "filtering": "No explicit transaction type field. Filter based on Payee patterns if needed."
     }
   }
 }
