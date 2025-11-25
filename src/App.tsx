@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import Papa from 'papaparse';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import {
@@ -16,6 +16,7 @@ import {
 } from 'chart.js';
 import './App.css';
 import jsPDF from 'jspdf';
+import { usePlaidLink } from 'react-plaid-link';
 import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
 import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
 import { enhanceCategoriesWithLLM } from './categoryEnhancer';
@@ -658,6 +659,8 @@ const App: React.FC = () => {
   const [showCookieBanner, setShowCookieBanner] = React.useState<boolean>(false);
   const [waitlistEmail, setWaitlistEmail] = React.useState<string>('');
   const [showThankYou, setShowThankYou] = React.useState<boolean>(false);
+  const [linkToken, setLinkToken] = React.useState<string | null>(null);
+  const [isPlaidLoading, setIsPlaidLoading] = React.useState<boolean>(false);
 
   // Check cookie consent on mount
   useEffect(() => {
@@ -682,6 +685,66 @@ const App: React.FC = () => {
     // will respect the consent and not send data
     // Netlify Analytics may still collect basic page views, but we've done our best
     // to disable custom tracking when consent is rejected
+  };
+
+  // Fetch Plaid link token
+  const fetchLinkToken = async () => {
+    setIsPlaidLoading(true);
+    try {
+      const response = await fetch('/.netlify/functions/create-plaid-link-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create link token');
+      }
+
+      const data = await response.json();
+      setLinkToken(data.link_token);
+    } catch (error) {
+      console.error('Error fetching link token:', error);
+      alert('Failed to connect to Plaid. Please try again.');
+    } finally {
+      setIsPlaidLoading(false);
+    }
+  };
+
+  // Handle Plaid success
+  const onPlaidSuccess = useCallback(async (publicToken: string, metadata: any) => {
+    trackButtonClick('Plaid Success', { institution: metadata.institution?.name });
+    console.log('Plaid Link success:', { publicToken, metadata });
+    
+    // TODO: Exchange public token for access token and fetch transactions
+    // For now, just show a success message
+    alert(`Successfully connected to ${metadata.institution?.name || 'your bank'}! Transaction fetching will be implemented next.`);
+  }, []);
+
+  // Plaid Link hook
+  const { open, ready } = usePlaidLink({
+    token: linkToken,
+    onSuccess: onPlaidSuccess,
+    onExit: (err, metadata) => {
+      if (err) {
+        console.error('Plaid Link error:', err);
+      }
+      setLinkToken(null);
+    },
+  });
+
+  // Open Plaid Link when token is ready
+  useEffect(() => {
+    if (linkToken && ready) {
+      open();
+    }
+  }, [linkToken, ready, open]);
+
+  // Handle Connect to Bank button click
+  const handleConnectBank = () => {
+    trackButtonClick('Connect to Bank', { location: 'analysis_page' });
+    fetchLinkToken();
   };
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
@@ -1927,6 +1990,34 @@ const App: React.FC = () => {
                       <span>Drag and drop your CSV file(s) here, or <span className="upload-link">click to upload</span></span>
                     )}
                   </div>
+                </div>
+                <div style={{ marginBottom: '2rem', textAlign: 'center' }}>
+                  <button
+                    onClick={handleConnectBank}
+                    disabled={isPlaidLoading}
+                    style={{
+                      padding: '1rem 2rem',
+                      fontSize: '1.1rem',
+                      backgroundColor: 'var(--brand-primary, #4a6cf7)',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      cursor: isPlaidLoading ? 'not-allowed' : 'pointer',
+                      opacity: isPlaidLoading ? 0.6 : 1,
+                      fontWeight: 600,
+                      transition: 'opacity 0.2s, transform 0.1s',
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!isPlaidLoading) {
+                        e.currentTarget.style.transform = 'scale(1.02)';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'scale(1)';
+                    }}
+                  >
+                    {isPlaidLoading ? 'Connecting...' : 'Connect to bank'}
+                  </button>
                 </div>
                 {csvData.length > 0 && (
                   <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', justifyContent: 'center' }}>
