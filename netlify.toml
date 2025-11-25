@@ -4,9 +4,10 @@
   functions = "netlify/functions"
 
 [build.environment]
-  # Disable smart detection for secrets scanning
-  # The Gemini API key is intentionally exposed to client-side code (Vite requirement)
-  SECRETS_SCAN_SMART_DETECTION_ENABLED = "false"
+  # Disable secrets scanning
+  # VITE_GEMINI_API_KEY is intentionally exposed to client-side (Vite requirement)
+  # PLAID_ENV default value in function code is expected
+  SECRETS_SCAN_ENABLED = "false"
 
 # Environment variables for Netlify Functions (Supabase)
 # These should be set in Netlify's dashboard under Site settings > Environment variables

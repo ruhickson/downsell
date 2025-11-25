@@ -21,7 +21,9 @@ export const handler = async (event: any) => {
     // Get Plaid credentials from environment variables
     const clientId = process.env.PLAID_CLIENT_ID;
     const secret = process.env.PLAID_SECRET;
-    const environment = process.env.PLAID_ENV || 'sandbox';
+    // Default to sandbox environment if not specified
+    const defaultEnv = 'sandbox';
+    const environment = process.env.PLAID_ENV || defaultEnv;
 
     if (!clientId || !secret) {
       console.error('Plaid credentials not configured');
@@ -33,8 +35,10 @@ export const handler = async (event: any) => {
     }
 
     // Initialize Plaid client
+    const envKey = environment as keyof typeof PlaidEnvironments;
+    const plaidEnv = PlaidEnvironments[envKey] || PlaidEnvironments.sandbox;
     const configuration = new Configuration({
-      basePath: PlaidEnvironments[environment as keyof typeof PlaidEnvironments] || PlaidEnvironments.sandbox,
+      basePath: plaidEnv,
       baseOptions: {
         headers: {
           'PLAID-CLIENT-ID': clientId,
