@@ -726,7 +726,7 @@ const App: React.FC = () => {
   const { open, ready } = usePlaidLink({
     token: linkToken,
     onSuccess: onPlaidSuccess,
-    onExit: (err, metadata) => {
+    onExit: (err, _metadata) => {
       if (err) {
         console.error('Plaid Link error:', err);
       }
