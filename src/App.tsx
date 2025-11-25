@@ -661,12 +661,25 @@ const App: React.FC = () => {
   const [showThankYou, setShowThankYou] = React.useState<boolean>(false);
   const [linkToken, setLinkToken] = React.useState<string | null>(null);
   const [isPlaidLoading, setIsPlaidLoading] = React.useState<boolean>(false);
+  const [connectedBanks, setConnectedBanks] = React.useState<Array<{ institutionId: string; name: string; connectedAt: string }>>([]);
 
   // Check cookie consent on mount
   useEffect(() => {
     const consent = localStorage.getItem('cookie-consent');
     if (!consent) {
       setShowCookieBanner(true);
+    }
+  }, []);
+
+  // Load connected banks from localStorage on mount
+  useEffect(() => {
+    const savedBanks = localStorage.getItem('connected-banks');
+    if (savedBanks) {
+      try {
+        setConnectedBanks(JSON.parse(savedBanks));
+      } catch (e) {
+        console.error('Error loading connected banks:', e);
+      }
     }
   }, []);
 
@@ -717,10 +730,24 @@ const App: React.FC = () => {
     trackButtonClick('Plaid Success', { institution: metadata.institution?.name });
     console.log('Plaid Link success:', { publicToken, metadata });
     
+    // Add connected bank to state
+    const institutionName = metadata.institution?.name || 'Unknown Bank';
+    const institutionId = metadata.institution?.institution_id || `bank_${Date.now()}`;
+    
+    const newBank = {
+      institutionId,
+      name: institutionName,
+      connectedAt: new Date().toISOString(),
+    };
+    
+    const updatedBanks = [...connectedBanks, newBank];
+    setConnectedBanks(updatedBanks);
+    localStorage.setItem('connected-banks', JSON.stringify(updatedBanks));
+    
     // TODO: Exchange public token for access token and fetch transactions
     // For now, just show a success message
-    alert(`Successfully connected to ${metadata.institution?.name || 'your bank'}! Transaction fetching will be implemented next.`);
-  }, []);
+    alert(`Successfully connected to ${institutionName}! Transaction fetching will be implemented next.`);
+  }, [connectedBanks]);
 
   // Plaid Link hook
   const { open, ready } = usePlaidLink({
@@ -2018,6 +2045,53 @@ const App: React.FC = () => {
                   >
                     {isPlaidLoading ? 'Connecting...' : 'Connect to bank'}
                   </button>
+                  
+                  {connectedBanks.length > 0 && (
+                    <div style={{ 
+                      marginTop: '1.5rem', 
+                      padding: '1rem',
+                      backgroundColor: '#f0f7ff',
+                      borderRadius: '8px',
+                      border: '1px solid #4a6cf7',
+                      maxWidth: '500px',
+                      margin: '1.5rem auto 0',
+                    }}>
+                      <div style={{ 
+                        fontSize: '0.9rem', 
+                        fontWeight: 600, 
+                        color: '#4a6cf7',
+                        marginBottom: '0.75rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                      }}>
+                        <span style={{ fontSize: '1.2rem' }}>✓</span>
+                        <span>Connected Banks ({connectedBanks.length})</span>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                        {connectedBanks.map((bank, idx) => (
+                          <div 
+                            key={bank.institutionId || idx}
+                            style={{
+                              padding: '0.75rem',
+                              backgroundColor: 'white',
+                              borderRadius: '6px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              fontSize: '0.9rem',
+                            }}
+                          >
+                            <span style={{ fontWeight: 500, color: '#333' }}>{bank.name}</span>
+                            <span style={{ fontSize: '0.8rem', color: '#666' }}>
+                              {new Date(bank.connectedAt).toLocaleDateString()}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {csvData.length > 0 && (
                   <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', justifyContent: 'center' }}>
