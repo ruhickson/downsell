@@ -811,25 +811,6 @@ const App: React.FC = () => {
 
   // Save account counters using a ref to track current value
   const accountCountersRef = React.useRef<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Plaid: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0, PTSB: 0, Plaid: 0 });
-  
-  // Wrap setAccountCounters to also save to localStorage
-  const setAccountCountersWithSave = React.useCallback((updater: React.SetStateAction<typeof accountCountersRef.current>) => {
-    setAccountCounters(prevCounters => {
-      const newCounters = typeof updater === 'function' ? updater(prevCounters) : updater;
-      accountCountersRef.current = newCounters;
-      
-      // Save to localStorage if cookies are accepted
-      if (hasConsentedToCookies()) {
-        try {
-          localStorage.setItem('saved-account-counters', JSON.stringify(newCounters));
-        } catch (e) {
-          console.error('Error saving account counters:', e);
-        }
-      }
-      
-      return newCounters;
-    });
-  }, []);
 
   const handleAcceptCookies = () => {
     localStorage.setItem('cookie-consent', 'accepted');
