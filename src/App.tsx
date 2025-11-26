@@ -61,8 +61,8 @@ type Transaction = {
   Date: string;
   Currency: string;
   Balance?: number;
-  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', 'BUNQ', 'Nationwide', or 'PTSB'
-  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', 'NAT-1', 'PTSB-1', etc.
+  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', 'BUNQ', 'Nationwide', 'PTSB', or 'Plaid'
+  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', 'NAT-1', 'PTSB-1', 'PLAID-1', etc.
   Category?: string; // Transaction category (e.g., 'Entertainment', 'Food & Dining')
   OriginalData: RawTransaction; // Keep original for reference
 };
@@ -478,6 +478,44 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   };
 }
 
+// Normalize Plaid transaction to unified Transaction format
+function normalizePlaidTransaction(plaidTx: any, account: string, accountCurrency: string = 'USD'): Transaction | null {
+  if (!plaidTx.name && !plaidTx.merchant_name) {
+    return null; // Skip transactions without description
+  }
+
+  const description = plaidTx.merchant_name || plaidTx.name || '';
+  const amount = plaidTx.amount || 0; // Plaid amounts are positive for debits (outgoing), negative for credits (incoming)
+  const date = plaidTx.date || plaidTx.authorized_date || '';
+  const currency = plaidTx.iso_currency_code || plaidTx.unofficial_currency_code || accountCurrency;
+  
+  // Plaid transaction types
+  let type = 'TRANSACTION';
+  if (plaidTx.pending) {
+    type = 'PENDING';
+  } else if (amount > 0) {
+    type = 'DEBIT';
+  } else {
+    type = 'CREDIT';
+  }
+
+  // Categorize transaction
+  const category = categorizeTransactionSync(description);
+
+  return {
+    Description: description,
+    Amount: -amount, // Invert to match our convention (negative = outgoing, positive = incoming)
+    Type: type,
+    Date: date,
+    Currency: currency,
+    Balance: undefined,
+    BankSource: 'Plaid',
+    Account: account,
+    Category: category,
+    OriginalData: plaidTx
+  };
+}
+
 function analyzeBankStatement(data: Transaction[]): Subscription[] {
   const transactionsByDescription: Record<string, any> = {};
   data.forEach((transaction) => {
@@ -649,7 +687,7 @@ const App: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
-  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0, PTSB: 0 });
+  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Plaid: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0, PTSB: 0, Plaid: 0 });
   const inputRef = React.useRef<HTMLInputElement>(null);
   const isEnhancingRef = React.useRef<boolean>(false);
   const lastDataLengthRef = React.useRef<number>(0);
@@ -730,23 +768,118 @@ const App: React.FC = () => {
     trackButtonClick('Plaid Success', { institution: metadata.institution?.name });
     console.log('Plaid Link success:', { publicToken, metadata });
     
-    // Add connected bank to state
-    const institutionName = metadata.institution?.name || 'Unknown Bank';
-    const institutionId = metadata.institution?.institution_id || `bank_${Date.now()}`;
+    setIsPlaidLoading(true);
     
-    const newBank = {
-      institutionId,
-      name: institutionName,
-      connectedAt: new Date().toISOString(),
-    };
-    
-    const updatedBanks = [...connectedBanks, newBank];
-    setConnectedBanks(updatedBanks);
-    localStorage.setItem('connected-banks', JSON.stringify(updatedBanks));
-    
-    // TODO: Exchange public token for access token and fetch transactions
-    // For now, just show a success message
-    alert(`Successfully connected to ${institutionName}! Transaction fetching will be implemented next.`);
+    try {
+      // Exchange public token for access token
+      const exchangeResponse = await fetch('/.netlify/functions/exchange-plaid-token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ public_token: publicToken }),
+      });
+
+      if (!exchangeResponse.ok) {
+        throw new Error('Failed to exchange token');
+      }
+
+      const { access_token, item_id } = await exchangeResponse.json();
+      
+      // Add connected bank to state
+      const institutionName = metadata.institution?.name || 'Unknown Bank';
+      const institutionId = metadata.institution?.institution_id || `bank_${Date.now()}`;
+      
+      const newBank = {
+        institutionId,
+        name: institutionName,
+        connectedAt: new Date().toISOString(),
+        accessToken: access_token,
+        itemId: item_id,
+      };
+      
+      const updatedBanks = [...connectedBanks, newBank];
+      setConnectedBanks(updatedBanks);
+      localStorage.setItem('connected-banks', JSON.stringify(updatedBanks));
+
+      // Fetch transactions from Plaid
+      const transactionsResponse = await fetch('/.netlify/functions/fetch-plaid-transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ 
+          access_token: access_token,
+          // Fetch last 2 years of transactions
+          start_date: (() => {
+            const date = new Date();
+            date.setFullYear(date.getFullYear() - 2);
+            return date.toISOString().split('T')[0];
+          })(),
+          end_date: new Date().toISOString().split('T')[0],
+        }),
+      });
+
+      if (!transactionsResponse.ok) {
+        throw new Error('Failed to fetch transactions');
+      }
+
+      const { transactions: plaidTransactions, accounts } = await transactionsResponse.json();
+      
+      // Get account counter for Plaid
+      setAccountCounters(prevCounters => {
+        const newCounters = { ...prevCounters };
+        newCounters.Plaid = (newCounters.Plaid || 0) + 1;
+        const account = `PLAID-${newCounters.Plaid}`;
+
+        // Normalize Plaid transactions
+        const normalizedTransactions = plaidTransactions
+          .map((plaidTx: any) => {
+            // Get currency from account
+            const accountInfo = accounts.find((acc: any) => acc.account_id === plaidTx.account_id);
+            const currency = accountInfo?.iso_currency_code || accountInfo?.unofficial_currency_code || 'USD';
+            return normalizePlaidTransaction(plaidTx, account, currency);
+          })
+          .filter((tx): tx is Transaction => tx !== null);
+
+        // Merge with existing data
+        setCsvData(prevData => {
+          const mergedData = [...prevData, ...normalizedTransactions];
+          
+          // Sort by date (newest first)
+          mergedData.sort((a, b) => {
+            const dateA = new Date(a.Date).getTime();
+            const dateB = new Date(b.Date).getTime();
+            return dateB - dateA;
+          });
+          
+          // Re-analyze subscriptions with merged data
+          setSubscriptions(analyzeBankStatement(mergedData));
+          
+          return mergedData;
+        });
+
+        // Update uploaded files list (track Plaid connections)
+        setUploadedFiles(prevFiles => {
+          const fileInfo = {
+            file: new File([], `${institutionName}_Plaid`, { type: 'application/json' }),
+            bankType: 'Plaid',
+            rowCount: plaidTransactions.length,
+            account: account,
+          };
+          return [...prevFiles, fileInfo];
+        });
+
+        return newCounters;
+      });
+
+      alert(`Successfully connected to ${institutionName} and loaded ${plaidTransactions.length} transactions!`);
+    } catch (error: any) {
+      console.error('Error processing Plaid connection:', error);
+      alert(`Connected to bank, but failed to fetch transactions: ${error.message}`);
+    } finally {
+      setIsPlaidLoading(false);
+    }
   }, [connectedBanks]);
 
   // Plaid Link hook
