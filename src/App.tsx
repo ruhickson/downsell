@@ -840,7 +840,7 @@ const App: React.FC = () => {
             const currency = accountInfo?.iso_currency_code || accountInfo?.unofficial_currency_code || 'USD';
             return normalizePlaidTransaction(plaidTx, account, currency);
           })
-          .filter((tx): tx is Transaction => tx !== null);
+          .filter((tx: Transaction | null): tx is Transaction => tx !== null);
 
         // Merge with existing data
         setCsvData(prevData => {
