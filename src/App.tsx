@@ -721,10 +721,133 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Load saved transaction data from localStorage on mount (only if cookies accepted)
+  useEffect(() => {
+    if (!hasConsentedToCookies()) {
+      return;
+    }
+
+    try {
+      const savedData = localStorage.getItem('saved-transaction-data');
+      const savedFiles = localStorage.getItem('saved-uploaded-files');
+      const savedCounters = localStorage.getItem('saved-account-counters');
+
+      if (savedData) {
+        const parsedData: Transaction[] = JSON.parse(savedData);
+        // Restore dates from strings to Date objects where needed
+        setCsvData(parsedData);
+        
+        // Re-analyze subscriptions
+        setSubscriptions(analyzeBankStatement(parsedData));
+      }
+
+      if (savedFiles) {
+        try {
+          const parsedFiles = JSON.parse(savedFiles);
+          // Convert file objects back (they'll be simplified since File objects can't be serialized)
+          setUploadedFiles(parsedFiles.map((f: any) => ({
+            ...f,
+            file: new File([], f.fileName || 'saved', { type: 'application/json' })
+          })));
+        } catch (e) {
+          console.error('Error loading uploaded files:', e);
+        }
+      }
+
+      if (savedCounters) {
+        try {
+          const parsedCounters = JSON.parse(savedCounters);
+          setAccountCounters(parsedCounters);
+          accountCountersRef.current = parsedCounters;
+        } catch (e) {
+          console.error('Error loading account counters:', e);
+        }
+      }
+    } catch (e) {
+      console.error('Error loading saved transaction data:', e);
+    }
+  }, []); // Only run once on mount
+
+  // Save transaction data to localStorage whenever it changes (only if cookies accepted)
+  useEffect(() => {
+    if (!hasConsentedToCookies()) {
+      return;
+    }
+
+    try {
+      if (csvData.length > 0) {
+        localStorage.setItem('saved-transaction-data', JSON.stringify(csvData));
+      } else {
+        localStorage.removeItem('saved-transaction-data');
+      }
+    } catch (e) {
+      console.error('Error saving transaction data:', e);
+    }
+  }, [csvData]);
+
+  // Save uploaded files to localStorage whenever they change (only if cookies accepted)
+  useEffect(() => {
+    if (!hasConsentedToCookies()) {
+      return;
+    }
+
+    try {
+      if (uploadedFiles.length > 0) {
+        // Store simplified version (File objects can't be serialized)
+        const simplified = uploadedFiles.map(f => ({
+          fileName: f.file.name,
+          bankType: f.bankType,
+          rowCount: f.rowCount,
+          account: f.account
+        }));
+        localStorage.setItem('saved-uploaded-files', JSON.stringify(simplified));
+      } else {
+        localStorage.removeItem('saved-uploaded-files');
+      }
+    } catch (e) {
+      console.error('Error saving uploaded files:', e);
+    }
+  }, [uploadedFiles]);
+
+  // Save account counters using a ref to track current value
+  const accountCountersRef = React.useRef<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Plaid: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0, PTSB: 0, Plaid: 0 });
+  
+  // Wrap setAccountCounters to also save to localStorage
+  const setAccountCountersWithSave = React.useCallback((updater: React.SetStateAction<typeof accountCountersRef.current>) => {
+    setAccountCounters(prevCounters => {
+      const newCounters = typeof updater === 'function' ? updater(prevCounters) : updater;
+      accountCountersRef.current = newCounters;
+      
+      // Save to localStorage if cookies are accepted
+      if (hasConsentedToCookies()) {
+        try {
+          localStorage.setItem('saved-account-counters', JSON.stringify(newCounters));
+        } catch (e) {
+          console.error('Error saving account counters:', e);
+        }
+      }
+      
+      return newCounters;
+    });
+  }, []);
+
   const handleAcceptCookies = () => {
     localStorage.setItem('cookie-consent', 'accepted');
     localStorage.setItem('cookie-consent-date', new Date().toISOString());
     setShowCookieBanner(false);
+  };
+
+  // Handle disconnecting a bank
+  const handleDisconnectBank = (institutionId: string, bankName: string) => {
+    if (!confirm(`Are you sure you want to disconnect ${bankName}? This will remove the bank connection, but your transaction data will remain.`)) {
+      return;
+    }
+
+    const updatedBanks = connectedBanks.filter(bank => bank.institutionId !== institutionId);
+    setConnectedBanks(updatedBanks);
+    localStorage.setItem('connected-banks', JSON.stringify(updatedBanks));
+    
+    trackButtonClick('Disconnect Bank', { bank: bankName });
   };
 
   const handleRejectCookies = () => {
@@ -831,6 +954,15 @@ const App: React.FC = () => {
         const newCounters = { ...prevCounters };
         newCounters.Plaid = (newCounters.Plaid || 0) + 1;
         const account = `PLAID-${newCounters.Plaid}`;
+
+        // Save to localStorage if cookies accepted
+        if (hasConsentedToCookies()) {
+          try {
+            localStorage.setItem('saved-account-counters', JSON.stringify(newCounters));
+          } catch (e) {
+            console.error('Error saving account counters:', e);
+          }
+        }
 
         // Normalize Plaid transactions
         const normalizedTransactions = plaidTransactions
@@ -1099,6 +1231,15 @@ const App: React.FC = () => {
             : bankType === 'PTSB'
             ? `PTSB-${newCounters[bankType]}`
             : `REV-${newCounters[bankType]}`;
+          
+          // Save to localStorage if cookies accepted
+          if (hasConsentedToCookies()) {
+            try {
+              localStorage.setItem('saved-account-counters', JSON.stringify(newCounters));
+            } catch (e) {
+              console.error('Error saving account counters:', e);
+            }
+          }
           
           // Normalize all transactions with account identifier
           const normalizedTransactions = rawData
@@ -2216,10 +2357,37 @@ const App: React.FC = () => {
                               fontSize: '0.9rem',
                             }}
                           >
-                            <span style={{ fontWeight: 500, color: '#333' }}>{bank.name}</span>
-                            <span style={{ fontSize: '0.8rem', color: '#666' }}>
-                              {new Date(bank.connectedAt).toLocaleDateString()}
-                            </span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1 }}>
+                              <span style={{ fontWeight: 500, color: '#333' }}>{bank.name}</span>
+                              <span style={{ fontSize: '0.8rem', color: '#666' }}>
+                                Connected {new Date(bank.connectedAt).toLocaleDateString()}
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => handleDisconnectBank(bank.institutionId, bank.name)}
+                              style={{
+                                padding: '0.5rem 1rem',
+                                fontSize: '0.85rem',
+                                backgroundColor: '#ff4444',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontWeight: 500,
+                                transition: 'opacity 0.2s, transform 0.1s',
+                                marginLeft: '1rem',
+                              }}
+                              onMouseEnter={(e) => {
+                                e.currentTarget.style.opacity = '0.9';
+                                e.currentTarget.style.transform = 'scale(1.05)';
+                              }}
+                              onMouseLeave={(e) => {
+                                e.currentTarget.style.opacity = '1';
+                                e.currentTarget.style.transform = 'scale(1)';
+                              }}
+                            >
+                              Disconnect
+                            </button>
                           </div>
                         ))}
                       </div>
