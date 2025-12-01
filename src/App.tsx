@@ -658,6 +658,13 @@ const App: React.FC = () => {
   const [showCookieBanner, setShowCookieBanner] = React.useState<boolean>(false);
   const [waitlistEmail, setWaitlistEmail] = React.useState<string>('');
   const [showThankYou, setShowThankYou] = React.useState<boolean>(false);
+  // Collapsible info tiles on Analysis tab (collapsed by default)
+  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
+  const [privacyCollapsed, setPrivacyCollapsed] = useState<boolean>(true);
+  const [autopilotCollapsed, setAutopilotCollapsed] = useState<boolean>(true);
+  const [showBugReportModal, setShowBugReportModal] = React.useState<boolean>(false);
+  const [bugReportMessage, setBugReportMessage] = React.useState<string>('');
+  const [bugReportEmail, setBugReportEmail] = React.useState<string>('');
 
   // Check cookie consent on mount
   useEffect(() => {
@@ -690,9 +697,6 @@ const App: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [amountFilterType, setAmountFilterType] = useState<string>('none');
   const [amountFilterValue, setAmountFilterValue] = useState<string>('');
-  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(false);
-  const [privacyCollapsed, setPrivacyCollapsed] = useState<boolean>(false);
-  const [autopilotCollapsed, setAutopilotCollapsed] = useState<boolean>(false);
   const frequencyOptions = [
     'All',
     'Once-off/yearly',
@@ -1574,18 +1578,36 @@ const App: React.FC = () => {
               const isAccountTab = tab.label.startsWith('Account');
               const isDisabled = isAccountTab || ((tab.label === 'Report' || tab.label === 'Actions' || tab.label === 'Transactions') && csvData.length === 0);
               return (
-              <div
-                key={tab.label}
+                <div
+                  key={tab.label}
                   className={`sidebar-item ${activeTab === tab.label ? 'sidebar-item-active' : ''} ${isDisabled ? 'sidebar-item-disabled' : ''}`}
                   onClick={() => !isDisabled && handleSidebarTabClick(tab.label)}
-              >
-                <span className="sidebar-icon">{tab.icon}</span>
-                <span className="sidebar-label">{tab.label}</span>
-              </div>
+                >
+                  <span className="sidebar-icon">{tab.icon}</span>
+                  <span className="sidebar-label">{tab.label}</span>
+                </div>
               );
             })}
           </nav>
-          <div style={{ padding: '1rem', marginTop: 'auto' }}>
+          <div style={{ padding: '1rem', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <button
+              className="optimize-btn"
+              onClick={() => {
+                trackButtonClick('Bug Reporting', { location: 'sidebar' });
+                setShowBugReportModal(true);
+              }}
+              style={{
+                width: '100%',
+                padding: '0.6rem 1rem',
+                fontSize: '0.9rem',
+                backgroundColor: '#f5c84c',
+                borderColor: '#f5c84c',
+                color: '#1a2332',
+                fontWeight: 600,
+              }}
+            >
+              Bug reporting
+            </button>
             <button 
               className="optimize-btn" 
               onClick={() => {
@@ -1631,21 +1653,26 @@ const App: React.FC = () => {
             {activeTab === 'Analysis' && (
               <>
                 <h1>Analyze Your Subscriptions</h1>
-                <div style={{ 
-                  display: 'grid',
-                  gridTemplateColumns: 'repeat(3, 1fr)',
-                  gap: '1.5rem',
-                  marginBottom: '1.5rem'
-                }}>
-                  <div style={{ 
-                    padding: '1rem 1.5rem', 
-                    background: 'rgba(255, 255, 255, 0.05)', 
-                    border: '1px solid rgba(255, 255, 255, 0.1)', 
-                    borderRadius: '12px', 
-                    color: '#bfc9da',
-                    fontSize: '0.95rem',
-                    lineHeight: '1.6'
-                  }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.0rem',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: '1rem 1.5rem',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '12px',
+                      color: '#bfc9da',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                    }}
+                  >
                     <div 
                       style={{ 
                         display: 'flex', 
@@ -1674,15 +1701,18 @@ const App: React.FC = () => {
                       </>
                     )}
                   </div>
-                  <div style={{ 
-                    padding: '1rem 1.5rem', 
-                    background: 'rgba(45, 140, 255, 0.15)', 
-                    border: '1px solid rgba(45, 140, 255, 0.3)', 
-                    borderRadius: '12px', 
-                    color: '#bfc9da',
-                    fontSize: '0.95rem',
-                    lineHeight: '1.6'
-                  }}>
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: '1rem 1.5rem',
+                      background: 'rgba(45, 140, 255, 0.15)',
+                      border: '1px solid rgba(45, 140, 255, 0.3)',
+                      borderRadius: '12px',
+                      color: '#bfc9da',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                    }}
+                  >
                     <div 
                       style={{ 
                         display: 'flex', 
@@ -1708,15 +1738,18 @@ const App: React.FC = () => {
                       </>
                     )}
                   </div>
-                  <div style={{ 
-                    padding: '1rem 1.5rem', 
-                    background: 'rgba(0, 217, 255, 0.1)', 
-                    border: '1px solid rgba(0, 217, 255, 0.3)', 
-                    borderRadius: '12px', 
-                    color: '#bfc9da',
-                    fontSize: '0.95rem',
-                    lineHeight: '1.6'
-                  }}>
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: '1rem 1.5rem',
+                      background: 'rgba(0, 217, 255, 0.1)',
+                      border: '1px solid rgba(0, 217, 255, 0.3)',
+                      borderRadius: '12px',
+                      color: '#bfc9da',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                    }}
+                  >
                     <div 
                       style={{ 
                         display: 'flex', 
@@ -1885,6 +1918,23 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Permanent TSB</strong>
+                  </div>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column',
+                    alignItems: 'center', 
+                    gap: '0.5rem',
+                    padding: '0.75rem',
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.2)'
+                  }}>
+                    <img 
+                      src="https://i.imgur.com/g3fk1Cu.png" 
+                      alt="Monzo" 
+                      style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                    />
+                    <strong style={{ color: 'white', fontSize: '0.9rem' }}>Monzo</strong>
                     </div>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
@@ -3472,7 +3522,170 @@ const App: React.FC = () => {
         </div>
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
-        
+
+        {/* Bug Reporting Modal */}
+        {showBugReportModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: '1rem',
+            }}
+            onClick={() => setShowBugReportModal(false)}
+          >
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #1a2332 0%, #2a3b4c 100%)',
+                borderRadius: '16px',
+                padding: '2rem 2.5rem',
+                maxWidth: '540px',
+                width: '100%',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                border: '2px solid rgba(45, 140, 255, 0.3)',
+                position: 'relative',
+                textAlign: 'left',
+                color: 'white',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setShowBugReportModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                ×
+              </button>
+
+              <h2 style={{ margin: '0 0 0.75rem 0', fontSize: '1.5rem' }}>Bug reporting</h2>
+              <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.95rem', lineHeight: 1.6, color: '#d0d8e6' }}>
+                Spotted something wrong? A feature missing or not working? Your bank not included? Send us a message here
+                and we'll be in touch shortly.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: '#c0cad8' }}>
+                    Email (optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={bugReportEmail}
+                    onChange={(e) => setBugReportEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      background: 'rgba(0, 0, 0, 0.2)',
+                      color: 'white',
+                      fontSize: '0.9rem',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: '#c0cad8' }}>
+                    Your message
+                  </label>
+                  <textarea
+                    value={bugReportMessage}
+                    onChange={(e) => setBugReportMessage(e.target.value)}
+                    placeholder="Tell us what went wrong, what you expected, and any details that can help us reproduce the issue."
+                    rows={5}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      background: 'rgba(0, 0, 0, 0.2)',
+                      color: 'white',
+                      fontSize: '0.9rem',
+                      resize: 'vertical',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: '1.5rem',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem',
+                }}
+              >
+                <button
+                  onClick={() => setShowBugReportModal(false)}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    borderRadius: '999px',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    background: 'transparent',
+                    color: '#d0d8e6',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    trackButtonClick('Submit Bug Report', { hasEmail: !!bugReportEmail });
+                    // For now, just show a thanks message and clear the form.
+                    alert('Thanks for the report! We\'ll review it shortly.');
+                    setBugReportMessage('');
+                    setBugReportEmail('');
+                    setShowBugReportModal(false);
+                  }}
+                  disabled={!bugReportMessage.trim()}
+                  style={{
+                    padding: '0.6rem 1.5rem',
+                    borderRadius: '999px',
+                    border: 'none',
+                    background: bugReportMessage.trim() ? '#2d8cff' : 'rgba(45, 140, 255, 0.4)',
+                    color: 'white',
+                    cursor: bugReportMessage.trim() ? 'pointer' : 'not-allowed',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Send report
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Waitlist Modal */}
         {showWaitlistModal && (
           <div 
