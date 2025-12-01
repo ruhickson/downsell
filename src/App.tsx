@@ -1800,11 +1800,12 @@ const App: React.FC = () => {
                     alignItems: 'center',
                     marginBottom: '0.75rem'
                   }}>
+                    {/* AIB - IE */}
                     <div style={{ 
                       display: 'flex', 
                       flexDirection: 'column',
                       alignItems: 'center', 
-                      gap: '0.5rem',
+                      gap: '0.35rem',
                       padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
@@ -1816,12 +1817,15 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>AIB</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
                     </div>
+
+                    {/* Bank of Ireland - IE */}
                     <div style={{ 
                       display: 'flex', 
                       flexDirection: 'column',
                       alignItems: 'center', 
-                      gap: '0.5rem',
+                      gap: '0.35rem',
                       padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
@@ -1833,12 +1837,15 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Bank of Ireland</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
                     </div>
+
+                    {/* Bunq - IE */}
                     <div style={{ 
                       display: 'flex', 
                       flexDirection: 'column',
                       alignItems: 'center', 
-                      gap: '0.5rem',
+                      gap: '0.35rem',
                       padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
@@ -1850,12 +1857,35 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Bunq</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
                     </div>
+
+                    {/* Monzo - UK */}
                     <div style={{ 
                       display: 'flex', 
                       flexDirection: 'column',
                       alignItems: 'center', 
-                      gap: '0.5rem',
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/g3fk1Cu.png" 
+                        alt="Monzo" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Monzo</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇬🇧 UK</span>
+                    </div>
+
+                    {/* N26 - IE */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
                       padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
@@ -1867,29 +1897,15 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>N26</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
                     </div>
+
+                    {/* Nationwide - UK */}
                     <div style={{ 
                       display: 'flex', 
                       flexDirection: 'column',
                       alignItems: 'center', 
-                      gap: '0.5rem',
-                      padding: '0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
-                      <img 
-                        src="https://i.imgur.com/hNxpqq9.png" 
-                        alt="Revolut" 
-                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
-                      />
-                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Revolut</strong>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      flexDirection: 'column',
-                      alignItems: 'center', 
-                      gap: '0.5rem',
+                      gap: '0.35rem',
                       padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
@@ -1901,12 +1917,15 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Nationwide</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇬🇧 UK</span>
                     </div>
+
+                    {/* Permanent TSB - IE */}
                     <div style={{ 
                       display: 'flex', 
                       flexDirection: 'column',
                       alignItems: 'center', 
-                      gap: '0.5rem',
+                      gap: '0.35rem',
                       padding: '0.75rem',
                       background: 'rgba(255, 255, 255, 0.1)',
                       borderRadius: '8px',
@@ -1918,23 +1937,27 @@ const App: React.FC = () => {
                         style={{ width: '100px', height: '100px', objectFit: 'contain' }}
                       />
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Permanent TSB</strong>
-                  </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    flexDirection: 'column',
-                    alignItems: 'center', 
-                    gap: '0.5rem',
-                    padding: '0.75rem',
-                    background: 'rgba(255, 255, 255, 0.1)',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(255, 255, 255, 0.2)'
-                  }}>
-                    <img 
-                      src="https://i.imgur.com/g3fk1Cu.png" 
-                      alt="Monzo" 
-                      style={{ width: '100px', height: '100px', objectFit: 'contain' }}
-                    />
-                    <strong style={{ color: 'white', fontSize: '0.9rem' }}>Monzo</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
+                    </div>
+
+                    {/* Revolut - IE / UK */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/hNxpqq9.png" 
+                        alt="Revolut" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Revolut</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE / 🇬🇧 UK</span>
                     </div>
                   </div>
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
