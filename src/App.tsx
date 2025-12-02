@@ -169,7 +169,25 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     keys.some(k => k.trim() === 'Name' || k.includes('Name')) &&
     keys.some(k => k.trim() === 'Description' || k.includes('Description'))
   );
-  const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+  // Monzo: Similar columns to Nationwide but with GBP amounts that include '£' and date format like 29-Dec-14
+  const isMonzo = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
+    keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+    keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+    keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+    keys.some(k => k.trim() === 'Balance' || k.includes('Balance')) &&
+    // At least one Paid out / Paid in value contains a £ symbol (Monzo CSV)
+    (() => {
+      const paidOutKey = keys.find(k => k.trim() === 'Paid out' || k.includes('Paid out'));
+      const paidInKey = keys.find(k => k.trim() === 'Paid in' || k.includes('Paid in'));
+      const paidOut = paidOutKey ? String(rawTx[paidOutKey] || '') : '';
+      const paidIn = paidInKey ? String(rawTx[paidInKey] || '') : '';
+      return paidOut.includes('£') || paidIn.includes('£');
+    })()
+  );
+
+  const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isMonzo && (
     keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
     keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
     keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
@@ -214,8 +232,8 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // BUNQ: use Name field directly
     const nameKey = keys.find(k => k.trim() === 'Name' || k.includes('Name'));
     description = nameKey ? String(rawTx[nameKey] || '').trim() : '';
-  } else if (isNationwide) {
-    // Nationwide: use Description field directly
+  } else if (isMonzo || isNationwide) {
+    // Monzo & Nationwide: use Description field directly
     const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
     description = descKey ? String(rawTx[descKey] || '').trim() : '';
   } else if (isPTSB) {
@@ -269,8 +287,8 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     if (amountKey) {
       amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
     }
-  } else if (isNationwide) {
-    // Nationwide: use Paid out (negative) or Paid in (positive), remove £ symbol
+  } else if (isMonzo || isNationwide) {
+    // Monzo & Nationwide: use Paid out (negative) or Paid in (positive), remove £ symbol
     const paidOutKey = keys.find(k => k.trim() === 'Paid out' || k.includes('Paid out'));
     const paidInKey = keys.find(k => k.trim() === 'Paid in' || k.includes('Paid in'));
     
@@ -441,8 +459,8 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
   } else if (isBUNQ) {
     // BUNQ doesn't have explicit currency field - default to EUR
     currency = 'EUR';
-  } else if (isNationwide) {
-    // Nationwide is a UK bank - default to GBP
+  } else if (isMonzo || isNationwide) {
+    // Monzo & Nationwide are UK banks - default to GBP
     currency = 'GBP';
   } else if (isPTSB) {
     // PTSB is an Irish bank - default to EUR
@@ -470,7 +488,21 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : (isPTSB ? 'PTSB' : 'Revolut'))))),
+    BankSource: isAIB
+      ? 'AIB'
+      : isBOI
+      ? 'BOI'
+      : isN26
+      ? 'N26'
+      : isBUNQ
+      ? 'BUNQ'
+      : isMonzo
+      ? 'Monzo'
+      : isNationwide
+      ? 'Nationwide'
+      : isPTSB
+      ? 'PTSB'
+      : 'Revolut',
     Account: account,
     Category: category,
     OriginalData: rawTx
@@ -648,7 +680,16 @@ const App: React.FC = () => {
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
-  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0, BUNQ: 0, Nationwide: 0, PTSB: 0 });
+  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Monzo: number }>({
+    AIB: 0,
+    Revolut: 0,
+    BOI: 0,
+    N26: 0,
+    BUNQ: 0,
+    Nationwide: 0,
+    PTSB: 0,
+    Monzo: 0,
+  });
   const inputRef = React.useRef<HTMLInputElement>(null);
   const isEnhancingRef = React.useRef<boolean>(false);
   const lastDataLengthRef = React.useRef<number>(0);
@@ -842,8 +883,25 @@ const App: React.FC = () => {
           keys.some(k => k.trim() === 'Description' || k.includes('Description'))
         );
         
-        // Check for Nationwide (must have: Date, Type, Description, Paid out, Paid in, Balance)
-        const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+        // Check for Monzo (similar columns to Nationwide but amounts include '£')
+        const isMonzo = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
+          keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+          keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+          keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+          keys.some(k => k.trim() === 'Balance' || k.includes('Balance')) &&
+          (() => {
+            const paidOutKey = keys.find(k => k.trim() === 'Paid out' || k.includes('Paid out'));
+            const paidInKey = keys.find(k => k.trim() === 'Paid in' || k.includes('Paid in'));
+            const paidOut = paidOutKey ? String(firstRow[paidOutKey] || '') : '';
+            const paidIn = paidInKey ? String(firstRow[paidInKey] || '') : '';
+            return paidOut.includes('£') || paidIn.includes('£');
+          })()
+        );
+
+        // Check for Nationwide (must have: Date, Type, Description, Paid out, Paid in, Balance) - but not Monzo
+        const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isMonzo && (
           keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
           keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
           keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
@@ -861,7 +919,21 @@ const App: React.FC = () => {
           keys.some(k => (k.trim() === 'Running Balance' || k.includes('Running Balance') || k.includes('Balance')))
         );
         
-        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : (isBUNQ ? 'BUNQ' : (isNationwide ? 'Nationwide' : (isPTSB ? 'PTSB' : 'Revolut')))));
+        const bankType = isAIB
+          ? 'AIB'
+          : isBOI
+          ? 'BOI'
+          : isN26
+          ? 'N26'
+          : isBUNQ
+          ? 'BUNQ'
+          : isMonzo
+          ? 'Monzo'
+          : isNationwide
+          ? 'Nationwide'
+          : isPTSB
+          ? 'PTSB'
+          : 'Revolut';
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -875,6 +947,8 @@ const App: React.FC = () => {
             ? `N26-${newCounters[bankType]}`
             : bankType === 'BUNQ'
             ? `BUN-${newCounters[bankType]}`
+            : bankType === 'Monzo'
+            ? `MZN-${newCounters[bankType]}`
             : bankType === 'Nationwide'
             ? `NAT-${newCounters[bankType]}`
             : bankType === 'PTSB'

@@ -1,0 +1,59 @@
+{
+  "bank": "Monzo",
+  "file_pattern": "*.csv",
+  "columns": [
+    {
+      "name": "Date",
+      "type": "date",
+      "format": "DD-MMM-YY",
+      "description": "Transaction date (e.g., 29-Dec-14)",
+      "required": true,
+      "examples": ["29-Dec-14", "01-Jan-15"]
+    },
+    {
+      "name": "Transaction type",
+      "type": "string",
+      "description": "Type of transaction (e.g., 'Transfer to', 'Transfer from', 'Card payment')",
+      "required": true,
+      "examples": ["Transfer to", "Transfer from", "Card payment"]
+    },
+    {
+      "name": "Description",
+      "type": "string",
+      "description": "Transaction description/merchant name",
+      "required": true,
+      "examples": ["Yorkie", "Dad for chocolate"]
+    },
+    {
+      "name": "Paid out",
+      "type": "string",
+      "description": "Debit amount (outgoing). Includes currency symbol '£'. Empty for credit transactions.",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["£1.23", ""]
+    },
+    {
+      "name": "Paid in",
+      "type": "string",
+      "description": "Credit amount (incoming). Includes currency symbol '£'. Empty for debit transactions.",
+      "required": false,
+      "can_be_empty": true,
+      "examples": ["", "£1.23"]
+    },
+    {
+      "name": "Balance",
+      "type": "string",
+      "description": "Account balance after transaction, including currency symbol '£'.",
+      "required": true,
+      "examples": ["£0.00", "£1.23"]
+    }
+  ],
+  "notes": [
+    "Paid out and Paid in are mutually exclusive - one will be empty.",
+    "Amounts include the '£' symbol and should be normalised by stripping it and parsing the numeric value.",
+    "Date format is DD-MMM-YY (e.g., 29-Dec-14).",
+    "This schema is similar to Nationwide but Monzo CSVs include the '£' symbol in amount fields."
+  ]
+}
+
+
