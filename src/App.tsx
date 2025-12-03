@@ -679,6 +679,8 @@ const App: React.FC = () => {
   const [csvData, setCsvData] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [supportedBanksCollapsed, setSupportedBanksCollapsed] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
   const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Monzo: number }>({
     AIB: 0,
@@ -748,8 +750,7 @@ const App: React.FC = () => {
     'Three or more times a week',
     'Daily',
   ];
-
-
+  
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
     setSidebarOpen(false);
@@ -760,6 +761,33 @@ const App: React.FC = () => {
   useEffect(() => {
     trackPageView(activeTab);
   }, [activeTab]);
+
+  // Detect mobile viewport & default-collapse some sections on small screens
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const MOBILE_BREAKPOINT = 768;
+
+    const updateIsMobile = () => {
+      const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
+      setIsMobile(mobile);
+
+      // If we move to a mobile-sized viewport, collapse supported banks by default.
+      // On larger screens, keep it expanded.
+      if (mobile) {
+        setSupportedBanksCollapsed(true);
+      } else {
+        setSupportedBanksCollapsed(false);
+      }
+    };
+
+    updateIsMobile();
+    window.addEventListener('resize', updateIsMobile);
+
+    return () => {
+      window.removeEventListener('resize', updateIsMobile);
+    };
+  }, []);
 
   // Helper function to enhance "Other" categories with LLM
   const enhanceOtherCategories = async (dataToEnhance?: Transaction[]) => {
@@ -1857,6 +1885,7 @@ const App: React.FC = () => {
                   </div>
                 </div>
                 <div style={{ 
+                  width: '100%',
                   padding: '1rem 1.5rem', 
                   background: 'rgba(255, 255, 255, 0.05)', 
                   border: '1px solid rgba(255, 255, 255, 0.1)', 
@@ -1866,14 +1895,32 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.75rem' }}>📋 Supported Banks</strong>
-                  <div style={{ 
-                    display: 'flex', 
-                    flexWrap: 'wrap', 
-                    gap: '1rem', 
-                    alignItems: 'center',
-                    marginBottom: '0.75rem'
-                  }}>
+                  <div 
+                    style={{ 
+                      display: 'flex', 
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setSupportedBanksCollapsed(prev => !prev)}
+                    aria-expanded={!supportedBanksCollapsed}
+                    aria-label={supportedBanksCollapsed ? 'Show supported banks' : 'Hide supported banks'}
+                  >
+                    <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🏦 Supported Banks</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {supportedBanksCollapsed ? '▼' : '▲'}
+                    </span>
+                  </div>
+
+                  {!supportedBanksCollapsed && (
+                    <div style={{ 
+                      display: 'flex', 
+                      flexWrap: 'wrap', 
+                      gap: '1rem', 
+                      alignItems: 'center',
+                      marginTop: '0.75rem',
+                      marginBottom: '0.75rem'
+                    }}>
                     {/* AIB - IE */}
                     <div style={{ 
                       display: 'flex', 
@@ -2033,7 +2080,9 @@ const App: React.FC = () => {
                       <strong style={{ color: 'white', fontSize: '0.9rem' }}>Revolut</strong>
                       <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE / 🇬🇧 UK</span>
                     </div>
-                  </div>
+                    </div>
+                  )}
+
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
                     We're expanding to support more banks in the coming weeks.
                   </p>
