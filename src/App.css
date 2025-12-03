@@ -679,3 +679,22 @@ input[type="file"]:hover {
   background: #2a3b4c !important;
   color: white !important;
 }
+
+/* Sankey diagram scrollbar styling */
+.sankey-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.sankey-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.sankey-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.sankey-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
+}
