@@ -1,0 +1,57 @@
+{
+  "bank": "Nationwide",
+  "file_pattern": "*.csv",
+  "columns": [
+    {
+      "name": "Date",
+      "type": "date",
+      "format": "DD-MMM-YY",
+      "description": "Transaction date",
+      "required": true,
+      "examples": ["29-Dec-14", "28-Dec-14"]
+    },
+    {
+      "name": "Type",
+      "type": "string",
+      "description": "Transaction type",
+      "required": true,
+      "examples": ["Direct Debit", "Card Payment", "Faster Payment"]
+    },
+    {
+      "name": "Description",
+      "type": "string",
+      "description": "Transaction description/merchant name",
+      "required": true,
+      "examples": ["TESCO STORES", "AMAZON", "NETFLIX"]
+    },
+    {
+      "name": "Paid out",
+      "type": "decimal",
+      "description": "Amount paid out (debits, may be empty)",
+      "required": false,
+      "examples": ["10.00", ""]
+    },
+    {
+      "name": "Paid in",
+      "type": "decimal",
+      "description": "Amount paid in (credits, may be empty)",
+      "required": false,
+      "examples": ["", "100.00"]
+    },
+    {
+      "name": "Balance",
+      "type": "decimal",
+      "description": "Account balance after transaction",
+      "required": true,
+      "examples": ["1234.56"]
+    }
+  ],
+  "notes": [
+    "Nationwide is a UK bank, so amounts are typically in GBP (British Pounds)",
+    "Paid out is for debits (negative transactions), Paid in is for credits (positive transactions)",
+    "One of Paid out or Paid in will be empty for each transaction",
+    "Dates are in DD/MM/YYYY format",
+    "Description field contains merchant names or transaction details"
+  ]
+}
+

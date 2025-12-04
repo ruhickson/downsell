@@ -34,6 +34,19 @@ ChartJS.register(
   Filler
 );
 
+// Helper function to get currency symbol
+function getCurrencySymbol(currency: string): string {
+  switch (currency?.toUpperCase()) {
+    case 'GBP':
+      return '£';
+    case 'USD':
+      return '$';
+    case 'EUR':
+    default:
+      return '€';
+  }
+}
+
 // Raw transaction from CSV (can be from any bank)
 type RawTransaction = {
   [key: string]: any;
@@ -47,8 +60,8 @@ type Transaction = {
   Date: string;
   Currency: string;
   Balance?: number;
-  BankSource: string; // 'AIB', 'Revolut', 'BOI', or 'N26'
-  Account: string; // 'AIB-1', 'REV-1', 'REV-2', etc.
+  BankSource: string; // 'AIB', 'Revolut', 'BOI', 'N26', 'BUNQ', 'Nationwide', or 'PTSB'
+  Account: string; // 'AIB-1', 'REV-1', 'REV-2', 'BUN-1', 'NAT-1', 'PTSB-1', etc.
   Category?: string; // Transaction category (e.g., 'Entertainment', 'Food & Dining')
   OriginalData: RawTransaction; // Keep original for reference
 };
@@ -126,7 +139,7 @@ function getFrequencyLabel(count: number, firstDate: Date | null, lastDate: Date
 function normalizeTransaction(rawTx: RawTransaction, account: string): Transaction | null {
   const keys = Object.keys(rawTx);
   
-  // Detect bank format (check in order: Revolut, AIB, BOI, N26)
+  // Detect bank format (check in order: Revolut, AIB, BOI, N26, BUNQ)
   const isRevolut = keys.some(k => 
     k.includes('Type') && 
     (k.includes('Started Date') || k.includes('Completed Date'))
@@ -147,6 +160,47 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     keys.some(k => k.trim() === 'Value Date' || k.includes('Value Date')) &&
     keys.some(k => k.trim() === 'Partner Name' || k.includes('Partner Name')) &&
     keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)'))
+  );
+  const isBUNQ = !isRevolut && !isAIB && !isBOI && !isN26 && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => k.trim() === 'Interest Date' || k.includes('Interest Date')) &&
+    keys.some(k => k.trim() === 'Amount' || k.includes('Amount')) &&
+    keys.some(k => k.trim() === 'Account' || k.includes('Account')) &&
+    keys.some(k => k.trim() === 'Name' || k.includes('Name')) &&
+    keys.some(k => k.trim() === 'Description' || k.includes('Description'))
+  );
+  // Monzo: Similar columns to Nationwide but with GBP amounts that include '£' and date format like 29-Dec-14
+  const isMonzo = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
+    keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+    keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+    keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+    keys.some(k => k.trim() === 'Balance' || k.includes('Balance')) &&
+    // At least one Paid out / Paid in value contains a £ symbol (Monzo CSV)
+    (() => {
+      const paidOutKey = keys.find(k => k.trim() === 'Paid out' || k.includes('Paid out'));
+      const paidInKey = keys.find(k => k.trim() === 'Paid in' || k.includes('Paid in'));
+      const paidOut = paidOutKey ? String(rawTx[paidOutKey] || '') : '';
+      const paidIn = paidInKey ? String(rawTx[paidInKey] || '') : '';
+      return paidOut.includes('£') || paidIn.includes('£');
+    })()
+  );
+
+  const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isMonzo && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
+    keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+    keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+    keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+    keys.some(k => k.trim() === 'Balance' || k.includes('Balance'))
+  );
+  const isPTSB = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isNationwide && (
+    keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+    keys.some(k => k.trim() === 'Payee' || k.includes('Payee')) &&
+    keys.some(k => k.trim() === 'Outflow' || k.includes('Outflow')) &&
+    keys.some(k => k.trim() === 'Inflow' || k.includes('Inflow')) &&
+    keys.some(k => (k.trim() === 'Running Balance' || k.includes('Running Balance') || k.includes('Balance')))
   );
   
   // Extract description
@@ -174,6 +228,18 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // N26: use Partner Name field directly
     const partnerNameKey = keys.find(k => k.trim() === 'Partner Name' || k.includes('Partner Name'));
     description = partnerNameKey ? String(rawTx[partnerNameKey] || '').trim() : '';
+  } else if (isBUNQ) {
+    // BUNQ: use Name field directly
+    const nameKey = keys.find(k => k.trim() === 'Name' || k.includes('Name'));
+    description = nameKey ? String(rawTx[nameKey] || '').trim() : '';
+  } else if (isMonzo || isNationwide) {
+    // Monzo & Nationwide: use Description field directly
+    const descKey = keys.find(k => k.trim() === 'Description' || k.includes('Description'));
+    description = descKey ? String(rawTx[descKey] || '').trim() : '';
+  } else if (isPTSB) {
+    // PTSB: use Payee field directly
+    const payeeKey = keys.find(k => k.trim() === 'Payee' || k.includes('Payee'));
+    description = payeeKey ? String(rawTx[payeeKey] || '').trim() : '';
   } else {
     // Revolut: single Description field
     description = rawTx.Description || rawTx.description || '';
@@ -215,6 +281,42 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     if (amountKey) {
       amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
     }
+  } else if (isBUNQ) {
+    // BUNQ: use Amount field (already signed, negative for debits, positive for credits)
+    const amountKey = keys.find(k => k.trim() === 'Amount' || k.includes('Amount'));
+    if (amountKey) {
+      amount = parseFloat(String(rawTx[amountKey] || '0').replace(/,/g, ''));
+    }
+  } else if (isMonzo || isNationwide) {
+    // Monzo & Nationwide: use Paid out (negative) or Paid in (positive), remove £ symbol
+    const paidOutKey = keys.find(k => k.trim() === 'Paid out' || k.includes('Paid out'));
+    const paidInKey = keys.find(k => k.trim() === 'Paid in' || k.includes('Paid in'));
+    
+    const paidOut = paidOutKey ? rawTx[paidOutKey] : '';
+    const paidIn = paidInKey ? rawTx[paidInKey] : '';
+    
+    if (paidOut && String(paidOut).trim()) {
+      // Remove £ symbol and commas, then parse
+      amount = -parseFloat(String(paidOut).replace(/[£,]/g, ''));
+    } else if (paidIn && String(paidIn).trim()) {
+      // Remove £ symbol and commas, then parse
+      amount = parseFloat(String(paidIn).replace(/[£,]/g, ''));
+    }
+  } else if (isPTSB) {
+    // PTSB: use Outflow (negative) or Inflow (positive)
+    const outflowKey = keys.find(k => k.trim() === 'Outflow' || k.includes('Outflow'));
+    const inflowKey = keys.find(k => k.trim() === 'Inflow' || k.includes('Inflow'));
+    
+    const outflow = outflowKey ? rawTx[outflowKey] : '';
+    const inflow = inflowKey ? rawTx[inflowKey] : '';
+    
+    if (outflow && String(outflow).trim()) {
+      // Remove commas, then parse as negative
+      amount = -parseFloat(String(outflow).replace(/,/g, ''));
+    } else if (inflow && String(inflow).trim()) {
+      // Remove commas, then parse as positive
+      amount = parseFloat(String(inflow).replace(/,/g, ''));
+    }
   } else {
     // Revolut: single Amount field (already signed)
     amount = parseFloat(rawTx.Amount || rawTx.amount || '0');
@@ -238,6 +340,24 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     // N26: use Type field (Presentment, Debit Transfer, Credit Transfer, Direct Debit, Fee, etc.)
     const typeKey = keys.find(k => k.trim() === 'Type' || k.includes('Type'));
     type = typeKey ? String(rawTx[typeKey] || '').toUpperCase() : '';
+  } else if (isBUNQ) {
+    // BUNQ doesn't have explicit transaction type - infer from Amount sign
+    if (amount < 0) {
+      type = 'DEBIT';
+    } else if (amount > 0) {
+      type = 'CREDIT';
+    } else {
+      type = 'UNKNOWN';
+    }
+  } else if (isPTSB) {
+    // PTSB doesn't have explicit transaction type - infer from Outflow/Inflow
+    if (amount < 0) {
+      type = 'DEBIT';
+    } else if (amount > 0) {
+      type = 'CREDIT';
+    } else {
+      type = 'UNKNOWN';
+    }
   } else {
     type = (rawTx.Type || rawTx.type || '').toUpperCase();
   }
@@ -283,6 +403,39 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
       dateStr = String(rawTx[dateKey] || '').trim();
       // N26 dates are already in YYYY-MM-DD format
     }
+  } else if (isBUNQ) {
+    // BUNQ: use Date field (YYYY-MM-DD format, already ISO)
+    const dateKey = keys.find(k => k.trim() === 'Date' || k.includes('Date'));
+    if (dateKey) {
+      dateStr = String(rawTx[dateKey] || '').trim();
+      // BUNQ dates are already in YYYY-MM-DD format
+    }
+  } else if (isNationwide) {
+    // Nationwide: use Date field (DD-MMM-YY format, e.g., "29-Dec-14")
+    const dateKey = keys.find(k => k.trim() === 'Date' || k.includes('Date'));
+    if (dateKey) {
+      const dateValue = String(rawTx[dateKey] || '').trim();
+      if (dateValue) {
+        // Parse DD-MMM-YY format (e.g., "29-Dec-14")
+        const parts = dateValue.split('-');
+        if (parts.length === 3) {
+          const day = parts[0].padStart(2, '0');
+          const monthNames: Record<string, string> = {
+            'Jan': '01', 'Feb': '02', 'Mar': '03', 'Apr': '04',
+            'May': '05', 'Jun': '06', 'Jul': '07', 'Aug': '08',
+            'Sep': '09', 'Oct': '10', 'Nov': '11', 'Dec': '12'
+          };
+          const month = monthNames[parts[1]] || '01';
+          // Handle 2-digit year: assume 20xx for years < 50, 19xx otherwise
+          let year = parts[2];
+          if (year.length === 2) {
+            const yearNum = parseInt(year, 10);
+            year = yearNum < 50 ? `20${year}` : `19${year}`;
+          }
+          dateStr = `${year}-${month}-${day}`;
+        }
+      }
+    }
   } else {
     // Revolut: use Completed Date or Started Date (YYYY-MM-DD HH:MM:SS format)
     dateStr = (rawTx['Completed Date'] || rawTx['Started Date'] || rawTx.Date || rawTx.date || '').toString();
@@ -302,6 +455,15 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     currency = 'EUR';
   } else if (isN26) {
     // N26 exports show amounts in EUR in 'Amount (EUR)' field - default to EUR
+    currency = 'EUR';
+  } else if (isBUNQ) {
+    // BUNQ doesn't have explicit currency field - default to EUR
+    currency = 'EUR';
+  } else if (isMonzo || isNationwide) {
+    // Monzo & Nationwide are UK banks - default to GBP
+    currency = 'GBP';
+  } else if (isPTSB) {
+    // PTSB is an Irish bank - default to EUR
     currency = 'EUR';
   } else {
     currency = (rawTx.Currency || rawTx.currency || 'EUR').toString().trim();
@@ -326,7 +488,21 @@ function normalizeTransaction(rawTx: RawTransaction, account: string): Transacti
     Date: dateStr,
     Currency: currency || 'EUR',
     Balance: balance,
-    BankSource: isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut')),
+    BankSource: isAIB
+      ? 'AIB'
+      : isBOI
+      ? 'BOI'
+      : isN26
+      ? 'N26'
+      : isBUNQ
+      ? 'BUNQ'
+      : isMonzo
+      ? 'Monzo'
+      : isNationwide
+      ? 'Nationwide'
+      : isPTSB
+      ? 'PTSB'
+      : 'Revolut',
     Account: account,
     Category: category,
     OriginalData: rawTx
@@ -476,7 +652,18 @@ function fetchStats(): Record<string, number> {
 }
 
 // Increment stat in localStorage
+// Check if user has consented to cookies
+function hasConsentedToCookies(): boolean {
+  if (typeof window === 'undefined') return false;
+  const consent = localStorage.getItem('cookie-consent');
+  return consent === 'accepted';
+}
+
 function incrementStat(key: string, amount = 1) {
+  // Only track if user has consented to cookies
+  if (!hasConsentedToCookies()) {
+    return;
+  }
   try {
     const stats = fetchStats();
     stats[key] = (stats[key] || 0) + amount;
@@ -492,12 +679,60 @@ const App: React.FC = () => {
   const [csvData, setCsvData] = useState<Transaction[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [dragActive, setDragActive] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const [supportedBanksCollapsed, setSupportedBanksCollapsed] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
-  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number }>({ AIB: 0, Revolut: 0, BOI: 0, N26: 0 });
+  const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Monzo: number }>({
+    AIB: 0,
+    Revolut: 0,
+    BOI: 0,
+    N26: 0,
+    BUNQ: 0,
+    Nationwide: 0,
+    PTSB: 0,
+    Monzo: 0,
+  });
   const inputRef = React.useRef<HTMLInputElement>(null);
   const isEnhancingRef = React.useRef<boolean>(false);
   const lastDataLengthRef = React.useRef<number>(0);
   const [isClassifying, setIsClassifying] = React.useState<boolean>(false);
+  const [showWaitlistModal, setShowWaitlistModal] = React.useState<boolean>(false);
+  const [hasShownWaitlistModal, setHasShownWaitlistModal] = React.useState<boolean>(false);
+  const [showCookieBanner, setShowCookieBanner] = React.useState<boolean>(false);
+  const [waitlistEmail, setWaitlistEmail] = React.useState<string>('');
+  const [showThankYou, setShowThankYou] = React.useState<boolean>(false);
+  // Collapsible info tiles on Analysis tab (collapsed by default)
+  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(true);
+  const [privacyCollapsed, setPrivacyCollapsed] = useState<boolean>(true);
+  const [autopilotCollapsed, setAutopilotCollapsed] = useState<boolean>(true);
+  const [showBugReportModal, setShowBugReportModal] = React.useState<boolean>(false);
+  const [bugReportMessage, setBugReportMessage] = React.useState<string>('');
+  const [bugReportEmail, setBugReportEmail] = React.useState<string>('');
+
+  // Check cookie consent on mount
+  useEffect(() => {
+    const consent = localStorage.getItem('cookie-consent');
+    if (!consent) {
+      setShowCookieBanner(true);
+    }
+  }, []);
+
+  const handleAcceptCookies = () => {
+    localStorage.setItem('cookie-consent', 'accepted');
+    localStorage.setItem('cookie-consent-date', new Date().toISOString());
+    setShowCookieBanner(false);
+  };
+
+  const handleRejectCookies = () => {
+    localStorage.setItem('cookie-consent', 'rejected');
+    localStorage.setItem('cookie-consent-date', new Date().toISOString());
+    setShowCookieBanner(false);
+    // Note: Netlify Analytics script is injected server-side by Netlify
+    // We cannot disable it client-side, but our custom tracking functions
+    // will respect the consent and not send data
+    // Netlify Analytics may still collect basic page views, but we've done our best
+    // to disable custom tracking when consent is rejected
+  };
   const [frequencyFilter, setFrequencyFilter] = useState<string>('All');
   const [transactionFilter, setTransactionFilter] = useState<string>('All');
   const [transactionSearch, setTransactionSearch] = useState<string>('');
@@ -505,9 +740,6 @@ const App: React.FC = () => {
   const [categoryFilter, setCategoryFilter] = useState<string>('All');
   const [amountFilterType, setAmountFilterType] = useState<string>('none');
   const [amountFilterValue, setAmountFilterValue] = useState<string>('');
-  const [aboutCollapsed, setAboutCollapsed] = useState<boolean>(false);
-  const [privacyCollapsed, setPrivacyCollapsed] = useState<boolean>(false);
-  const [autopilotCollapsed, setAutopilotCollapsed] = useState<boolean>(false);
   const frequencyOptions = [
     'All',
     'Once-off/yearly',
@@ -518,8 +750,7 @@ const App: React.FC = () => {
     'Three or more times a week',
     'Daily',
   ];
-
-
+  
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
     setSidebarOpen(false);
@@ -530,6 +761,33 @@ const App: React.FC = () => {
   useEffect(() => {
     trackPageView(activeTab);
   }, [activeTab]);
+
+  // Detect mobile viewport & default-collapse some sections on small screens
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const MOBILE_BREAKPOINT = 768;
+
+    const updateIsMobile = () => {
+      const mobile = window.innerWidth <= MOBILE_BREAKPOINT;
+      setIsMobile(mobile);
+
+      // If we move to a mobile-sized viewport, collapse supported banks by default.
+      // On larger screens, keep it expanded.
+      if (mobile) {
+        setSupportedBanksCollapsed(true);
+      } else {
+        setSupportedBanksCollapsed(false);
+      }
+    };
+
+    updateIsMobile();
+    window.addEventListener('resize', updateIsMobile);
+
+    return () => {
+      window.removeEventListener('resize', updateIsMobile);
+    };
+  }, []);
 
   // Helper function to enhance "Other" categories with LLM
   const enhanceOtherCategories = async (dataToEnhance?: Transaction[]) => {
@@ -643,7 +901,67 @@ const App: React.FC = () => {
            keys.some(k => k.trim() === 'Amount (EUR)' || k.includes('Amount (EUR)')))
         );
         
-        const bankType = isAIB ? 'AIB' : (isBOI ? 'BOI' : (isN26 ? 'N26' : 'Revolut'));
+        // Check for BUNQ (must have: Date, Interest Date, Amount, Account, Name, Description)
+        const isBUNQ = !isRevolut && !isAIB && !isBOI && !isN26 && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => k.trim() === 'Interest Date' || k.includes('Interest Date')) &&
+          keys.some(k => k.trim() === 'Amount' || k.includes('Amount')) &&
+          keys.some(k => k.trim() === 'Account' || k.includes('Account')) &&
+          keys.some(k => k.trim() === 'Name' || k.includes('Name')) &&
+          keys.some(k => k.trim() === 'Description' || k.includes('Description'))
+        );
+        
+        // Check for Monzo (similar columns to Nationwide but amounts include '£')
+        const isMonzo = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
+          keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+          keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+          keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+          keys.some(k => k.trim() === 'Balance' || k.includes('Balance')) &&
+          (() => {
+            const paidOutKey = keys.find(k => k.trim() === 'Paid out' || k.includes('Paid out'));
+            const paidInKey = keys.find(k => k.trim() === 'Paid in' || k.includes('Paid in'));
+            const paidOut = paidOutKey ? String(firstRow[paidOutKey] || '') : '';
+            const paidIn = paidInKey ? String(firstRow[paidInKey] || '') : '';
+            return paidOut.includes('£') || paidIn.includes('£');
+          })()
+        );
+
+        // Check for Nationwide (must have: Date, Type, Description, Paid out, Paid in, Balance) - but not Monzo
+        const isNationwide = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isMonzo && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => (k.trim() === 'Transaction type' || k.includes('Transaction type') || k.trim() === 'Type' || k.includes('Type'))) &&
+          keys.some(k => k.trim() === 'Description' || k.includes('Description')) &&
+          keys.some(k => k.trim() === 'Paid out' || k.includes('Paid out')) &&
+          keys.some(k => k.trim() === 'Paid in' || k.includes('Paid in')) &&
+          keys.some(k => k.trim() === 'Balance' || k.includes('Balance'))
+        );
+        
+        // Check for PTSB (must have: Date, Payee, Outflow, Inflow, Running Balance)
+        const isPTSB = !isRevolut && !isAIB && !isBOI && !isN26 && !isBUNQ && !isNationwide && (
+          keys.some(k => k.trim() === 'Date' || k.includes('Date')) &&
+          keys.some(k => k.trim() === 'Payee' || k.includes('Payee')) &&
+          keys.some(k => k.trim() === 'Outflow' || k.includes('Outflow')) &&
+          keys.some(k => k.trim() === 'Inflow' || k.includes('Inflow')) &&
+          keys.some(k => (k.trim() === 'Running Balance' || k.includes('Running Balance') || k.includes('Balance')))
+        );
+        
+        const bankType = isAIB
+          ? 'AIB'
+          : isBOI
+          ? 'BOI'
+          : isN26
+          ? 'N26'
+          : isBUNQ
+          ? 'BUNQ'
+          : isMonzo
+          ? 'Monzo'
+          : isNationwide
+          ? 'Nationwide'
+          : isPTSB
+          ? 'PTSB'
+          : 'Revolut';
         
         // Get or create account identifier
         setAccountCounters(prevCounters => {
@@ -655,6 +973,14 @@ const App: React.FC = () => {
             ? `BOI-${newCounters[bankType]}`
             : bankType === 'N26'
             ? `N26-${newCounters[bankType]}`
+            : bankType === 'BUNQ'
+            ? `BUN-${newCounters[bankType]}`
+            : bankType === 'Monzo'
+            ? `MZN-${newCounters[bankType]}`
+            : bankType === 'Nationwide'
+            ? `NAT-${newCounters[bankType]}`
+            : bankType === 'PTSB'
+            ? `PTSB-${newCounters[bankType]}`
             : `REV-${newCounters[bankType]}`;
           
           // Normalize all transactions with account identifier
@@ -681,8 +1007,20 @@ const App: React.FC = () => {
             return mergedData;
           });
           
-          // Update uploaded files list
+          // Update uploaded files list (check for duplicates)
           setUploadedFiles(prevFiles => {
+            // Check if this file already exists (by name, size, and lastModified)
+            const isDuplicate = prevFiles.some(existingFile => 
+              existingFile.file.name === file.name &&
+              existingFile.file.size === file.size &&
+              existingFile.file.lastModified === file.lastModified
+            );
+            
+            if (isDuplicate) {
+              console.log(`Skipping duplicate file: ${file.name}`);
+              return prevFiles; // Don't add duplicate
+            }
+            
             const newFile = { file, bankType, rowCount, account };
             return mergeWithExisting ? [...prevFiles, newFile] : [newFile];
           });
@@ -732,6 +1070,14 @@ const App: React.FC = () => {
     if (inputRef.current) {
       inputRef.current.value = '';
     }
+    
+    // Show waitlist modal after processing (only once per session)
+    if (!hasShownWaitlistModal) {
+      setTimeout(() => {
+        setShowWaitlistModal(true);
+        setHasShownWaitlistModal(true);
+      }, 1000); // Small delay to ensure processing is complete
+    }
     // Enhancement will be triggered by useEffect when csvData updates
   };
 
@@ -764,6 +1110,14 @@ const App: React.FC = () => {
     for (let i = 0; i < fileArray.length; i++) {
       await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
     }
+    
+    // Show waitlist modal after processing (only once per session)
+    if (!hasShownWaitlistModal) {
+      setTimeout(() => {
+        setShowWaitlistModal(true);
+        setHasShownWaitlistModal(true);
+      }, 1000); // Small delay to ensure processing is complete
+    }
     // Enhancement will be triggered by useEffect when csvData updates
   };
 
@@ -786,6 +1140,17 @@ const App: React.FC = () => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
   }, [subscriptions]);
+
+  // Get primary currency (most common currency in transactions)
+  const primaryCurrency = useMemo(() => {
+    if (csvData.length === 0) return 'EUR';
+    const currencyCounts: Record<string, number> = {};
+    csvData.forEach(tx => {
+      const currency = tx.Currency || 'EUR';
+      currencyCounts[currency] = (currencyCounts[currency] || 0) + 1;
+    });
+    return Object.entries(currencyCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || 'EUR';
+  }, [csvData]);
 
   const totalOutgoing = useMemo(() => {
     return csvData.reduce((sum, tx) => {
@@ -990,14 +1355,33 @@ const App: React.FC = () => {
     doc.text('Financial Analysis Report', margin, y);
     y += 35;
     
+    // Account summary
+    if (uploadedFiles.length > 0) {
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.setFont('helvetica', 'normal');
+      const accountList = uploadedFiles.map(f => `${f.bankType} (${f.account})`).join(', ');
+      const accountText = `Analyzed ${uploadedFiles.length} file${uploadedFiles.length > 1 ? 's' : ''}: ${accountList}`;
+      const accountLines = doc.splitTextToSize(accountText, contentWidth);
+      doc.text(accountLines, margin, y);
+      y += accountLines.length * 12 + 10;
+    }
+    
+    // Currency info
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Currency: ${primaryCurrency} (${getCurrencySymbol(primaryCurrency)})`, margin, y);
+    y += 15;
+    
     // Three paragraphs
     doc.setFontSize(11);
     doc.setTextColor(0, 0, 0);
     doc.setFont('helvetica', 'normal');
     
-    const paragraph1 = 'This comprehensive analysis examines your bank statement transactions to identify recurring payments and subscription patterns. By analyzing transaction frequency, amounts, and descriptions, the system categorizes potential subscriptions and calculates confidence scores based on payment regularity, consistency, and subscription-related keywords. The analysis filters out one-time transactions and transfers to focus on recurring expenses that may represent ongoing subscriptions or services.';
-    const paragraph2 = 'The system evaluates each transaction group by calculating statistical measures including average payment amounts, standard deviation, and payment frequency. Transactions are classified by frequency labels such as Daily, Weekly, Monthly, Quarterly, or Irregular based on the time span and number of occurrences. This helps distinguish between true recurring subscriptions and occasional purchases, providing you with a clear picture of your ongoing financial commitments.';
-    const paragraph3 = 'The analysis also tracks spending patterns over time, comparing total outgoing expenses against identified subscription costs. This enables you to understand what portion of your spending is dedicated to recurring services versus one-time purchases. By identifying these patterns, you can make informed decisions about which subscriptions to keep, optimize, or cancel to better manage your finances and reduce unnecessary recurring expenses.';
+    const paragraph1 = 'This comprehensive analysis examines your bank statement transactions from multiple accounts to identify recurring payments and subscription patterns. By analyzing transaction frequency, amounts, descriptions, and categories, the system categorizes potential subscriptions and calculates confidence scores based on payment regularity, consistency, and subscription-related keywords. The analysis filters out one-time transactions and transfers to focus on recurring expenses that may represent ongoing subscriptions or services.';
+    const paragraph2 = 'The system evaluates each transaction group by calculating statistical measures including average payment amounts, standard deviation, and payment frequency. Transactions are classified by frequency labels such as Daily, Weekly, Monthly, Quarterly, or Irregular based on the time span and number of occurrences. Each transaction is also automatically categorized (e.g., Entertainment, Food & Dining, Utilities) to help you understand your spending patterns across different areas of your life.';
+    const paragraph3 = 'The analysis tracks spending patterns over time, comparing total outgoing expenses against identified subscription costs. This enables you to understand what portion of your spending is dedicated to recurring services versus one-time purchases. By identifying these patterns across multiple accounts, you can make informed decisions about which subscriptions to keep, optimize, or cancel to better manage your finances and reduce unnecessary recurring expenses.';
     
     const lines1 = doc.splitTextToSize(paragraph1, contentWidth);
     doc.text(lines1, margin, y);
@@ -1011,42 +1395,85 @@ const App: React.FC = () => {
     doc.text(lines3, margin, y);
     y += lines3.length * 14 + 25;
     
+    // Category breakdown section (if categories exist)
+    const categorySpending: Record<string, number> = {};
+    csvData.forEach(tx => {
+      if (tx.Amount < 0 && tx.Category) {
+        categorySpending[tx.Category] = (categorySpending[tx.Category] || 0) + Math.abs(tx.Amount);
+      }
+    });
+    const hasCategories = Object.keys(categorySpending).length > 0 && 
+                          !Object.keys(categorySpending).every(cat => cat === 'Other' || !cat);
+    
+    if (hasCategories && y > 600) {
+      doc.addPage();
+      y = 40;
+    }
+    
+    if (hasCategories) {
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(0, 0, 0);
+      doc.text('Spending by Category', margin, y);
+      y += 20;
+      
+      // Sort categories by spend
+      const sortedCategories = Object.entries(categorySpending)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 10); // Top 10 categories
+      
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(0, 0, 0);
+      
+      sortedCategories.forEach(([category, amount]) => {
+        if (y > 750) {
+          doc.addPage();
+          y = 40;
+        }
+        doc.text(`${category}:`, margin, y);
+        doc.text(`${getCurrencySymbol(primaryCurrency)}${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, margin + 200, y);
+        y += 15;
+      });
+      
+      y += 15;
+    }
+    
     // Top 15 Outgoings section
     if (y > 650) {
       doc.addPage();
       y = 40;
     }
     
-      doc.setFontSize(16);
+    doc.setFontSize(16);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(0, 0, 0);
     doc.text('Top 15 Outgoings', margin, y);
     y += 20;
     
-    // Table header
+    // Table header (no gridlines)
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
     doc.setTextColor(45, 140, 255);
     const col1 = margin;
-    const col2 = margin + 250;
-    const col3 = margin + 380;
-    const col4 = margin + 480;
+    const col2 = margin + 200;
+    const col3 = margin + 320;
+    const col4 = margin + 400;
+    const col5 = margin + 480;
     
     doc.text('Name', col1, y);
-    doc.text('Total Spend', col2, y);
-    doc.text('Frequency', col3, y);
-    doc.text('Payments', col4, y);
-    y += 3;
-    doc.setDrawColor(45, 140, 255);
-    doc.line(margin, y, pageWidth - margin, y);
-    y += 12;
+    doc.text('Category', col2, y);
+    doc.text('Total Spend', col3, y);
+    doc.text('Frequency', col4, y);
+    doc.text('Payments', col5, y);
+    y += 15;
     
-    // Table rows
+    // Table rows (no gridlines)
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
     doc.setFontSize(9);
     
-    top15Outgoings.forEach((sub, index) => {
+    top15Outgoings.forEach((sub) => {
       if (y > 750) {
         doc.addPage();
         y = 40;
@@ -1055,26 +1482,42 @@ const App: React.FC = () => {
         doc.setTextColor(45, 140, 255);
         doc.setFontSize(10);
         doc.text('Name', col1, y);
-        doc.text('Total Spend', col2, y);
-        doc.text('Frequency', col3, y);
-        doc.text('Payments', col4, y);
+        doc.text('Category', col2, y);
+        doc.text('Total Spend', col3, y);
+        doc.text('Frequency', col4, y);
+        doc.text('Payments', col5, y);
         y += 15;
         doc.setFont('helvetica', 'normal');
         doc.setTextColor(0, 0, 0);
         doc.setFontSize(9);
       }
       
-      const nameLines = doc.splitTextToSize(sub.description, 240);
-      doc.text(nameLines, col1, y);
-      doc.text(`€${(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, col2, y);
-      doc.text(sub.frequencyLabel, col3, y);
-      doc.text(sub.count.toString(), col4, y);
-      y += Math.max(nameLines.length * 12, 15);
+      // Get category and accounts from csvData
+      const firstTx = csvData.find(tx => tx.Description === sub.description);
+      const category = firstTx?.Category || 'Other';
+      const accounts = accountsByDescription[sub.description] || [];
+      const accountStr = accounts.length > 0 ? accounts.join(', ') : '';
       
-      if (index < top15Outgoings.length - 1) {
-        doc.setDrawColor(200, 200, 200);
-        doc.line(margin, y - 3, pageWidth - margin, y - 3);
+      const nameLines = doc.splitTextToSize(sub.description, 190);
+      const categoryLines = doc.splitTextToSize(category, 110);
+      const accountLines = accountStr ? doc.splitTextToSize(`(${accountStr})`, 190) : [];
+      
+      doc.text(nameLines, col1, y);
+      doc.text(categoryLines, col2, y);
+      doc.text(`${getCurrencySymbol(primaryCurrency)}${(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, col3, y);
+      doc.text(sub.frequencyLabel, col4, y);
+      doc.text(sub.count.toString(), col5, y);
+      
+      // Add account info below name if available
+      if (accountLines.length > 0) {
+        doc.setFontSize(8);
+        doc.setTextColor(120, 120, 120);
+        doc.text(accountLines, col1, y + 12);
+        doc.setFontSize(9);
+        doc.setTextColor(0, 0, 0);
       }
+      
+      y += Math.max(nameLines.length * 12, categoryLines.length * 12, accountLines.length * 10, 15) + 5;
     });
     
     y += 20;
@@ -1118,7 +1561,7 @@ const App: React.FC = () => {
       const maxTotal = Math.max(...spendOverTime.totalSpend, ...spendOverTime.subscriptionSpend);
       const maxValue = maxTotal * 1.1;
       
-      // Draw axes
+      // Draw axes (no gridlines)
       chartCtx.strokeStyle = '#333333';
       chartCtx.lineWidth = 2;
       chartCtx.beginPath();
@@ -1193,7 +1636,7 @@ const App: React.FC = () => {
       for (let i = 0; i <= 5; i++) {
         const value = (maxValue / 5) * (5 - i);
         const yPos = chartY + (chartAreaHeight / 5) * i;
-        chartCtx.fillText(`€${Math.round(value).toLocaleString()}`, chartX - 10, yPos + 4);
+        chartCtx.fillText(`${getCurrencySymbol(primaryCurrency)}${Math.round(value).toLocaleString()}`, chartX - 10, yPos + 4);
       }
       
       // Legend
@@ -1237,18 +1680,36 @@ const App: React.FC = () => {
               const isAccountTab = tab.label.startsWith('Account');
               const isDisabled = isAccountTab || ((tab.label === 'Report' || tab.label === 'Actions' || tab.label === 'Transactions') && csvData.length === 0);
               return (
-              <div
-                key={tab.label}
+                <div
+                  key={tab.label}
                   className={`sidebar-item ${activeTab === tab.label ? 'sidebar-item-active' : ''} ${isDisabled ? 'sidebar-item-disabled' : ''}`}
                   onClick={() => !isDisabled && handleSidebarTabClick(tab.label)}
-              >
-                <span className="sidebar-icon">{tab.icon}</span>
-                <span className="sidebar-label">{tab.label}</span>
-              </div>
+                >
+                  <span className="sidebar-icon">{tab.icon}</span>
+                  <span className="sidebar-label">{tab.label}</span>
+                </div>
               );
             })}
           </nav>
-          <div style={{ padding: '1rem', marginTop: 'auto' }}>
+          <div style={{ padding: '1rem', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <button
+              className="optimize-btn"
+              onClick={() => {
+                trackButtonClick('Bug Reporting', { location: 'sidebar' });
+                setShowBugReportModal(true);
+              }}
+              style={{
+                width: '100%',
+                padding: '0.6rem 1rem',
+                fontSize: '0.9rem',
+                backgroundColor: '#f5c84c',
+                borderColor: '#f5c84c',
+                color: '#1a2332',
+                fontWeight: 600,
+              }}
+            >
+              Bug reporting
+            </button>
             <button 
               className="optimize-btn" 
               onClick={() => {
@@ -1294,121 +1755,137 @@ const App: React.FC = () => {
             {activeTab === 'Analysis' && (
               <>
                 <h1>Analyze Your Subscriptions</h1>
-                <div style={{ 
-                  padding: '1rem 1.5rem', 
-                  background: 'rgba(255, 255, 255, 0.05)', 
-                  border: '1px solid rgba(255, 255, 255, 0.1)', 
-                  borderRadius: '12px', 
-                  marginBottom: '1.5rem',
-                  color: '#bfc9da',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.6'
-                }}>
-                  <div 
-                    style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      cursor: 'pointer'
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '1.0rem',
+                    marginBottom: '1.5rem',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: '1rem 1.5rem',
+                      background: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      borderRadius: '12px',
+                      color: '#bfc9da',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
                     }}
-                    onClick={() => setAboutCollapsed(!aboutCollapsed)}
                   >
-                    <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
-                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
-                      {aboutCollapsed ? '▼' : '▲'}
-                    </span>
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setAboutCollapsed(!aboutCollapsed)}
+                    >
+                      <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🪪 About Downsell</strong>
+                      <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                        {aboutCollapsed ? '▼' : '▲'}
+                      </span>
+                    </div>
+                    {!aboutCollapsed && (
+                      <>
+                        <p style={{ margin: 0 }}>
+                          Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
+                        </p>
+                      </>
+                    )}
                   </div>
-                  {!aboutCollapsed && (
-                    <>
-                      <p style={{ margin: 0 }}>
-                        Downsell is an early slice of the <strong>Broc</strong> vision—built to help you understand your finances without the overwhelm.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        We know the real solution needs to be automatic. That's what we're building with Broc: A solution that monitors your finances continuously and takes action for you. But right now, especially as payday approaches, Downsell gives you the clarity to see your patterns and plan your next move.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Upload your bank statement (CSV) and get insights in seconds. We recommend 12 months of data for the clearest picture, but shorter periods work too.
-                      </p>
-                    </>
-                  )}
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: '1rem 1.5rem',
+                      background: 'rgba(45, 140, 255, 0.15)',
+                      border: '1px solid rgba(45, 140, 255, 0.3)',
+                      borderRadius: '12px',
+                      color: '#bfc9da',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                    }}
+                  >
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setPrivacyCollapsed(!privacyCollapsed)}
+                    >
+                      <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
+                      <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                        {privacyCollapsed ? '▼' : '▲'}
+                      </span>
+                    </div>
+                    {!privacyCollapsed && (
+                      <>
+                        <p style={{ margin: 0 }}>
+                          All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          This is a free public tool designed to help everyone understand their finances better.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <div
+                    style={{
+                      width: '100%',
+                      padding: '1rem 1.5rem',
+                      background: 'rgba(0, 217, 255, 0.1)',
+                      border: '1px solid rgba(0, 217, 255, 0.3)',
+                      borderRadius: '12px',
+                      color: '#bfc9da',
+                      fontSize: '0.95rem',
+                      lineHeight: '1.6',
+                    }}
+                  >
+                    <div 
+                      style={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => setAutopilotCollapsed(!autopilotCollapsed)}
+                    >
+                      <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
+                      <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                        {autopilotCollapsed ? '▼' : '▲'}
+                      </span>
+                    </div>
+                    {!autopilotCollapsed && (
+                      <>
+                        <p style={{ margin: 0 }}>
+                          Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
+                        </p>
+                        <p style={{ margin: '0.75rem 0 0 0' }}>
+                          Join the waitlist and be first when we launch.
+                        </p>
+                      </>
+                    )}
+                  </div>
                 </div>
                 <div style={{ 
-                  padding: '1rem 1.5rem', 
-                  background: 'rgba(45, 140, 255, 0.15)', 
-                  border: '1px solid rgba(45, 140, 255, 0.3)', 
-                  borderRadius: '12px', 
-                  marginBottom: '1.5rem',
-                  color: '#bfc9da',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.6'
-                }}>
-                  <div 
-                    style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setPrivacyCollapsed(!privacyCollapsed)}
-                  >
-                    <strong style={{ color: '#2d8cff', display: 'block', marginBottom: '0.5rem' }}>🔒 Your Privacy Matters</strong>
-                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
-                      {privacyCollapsed ? '▼' : '▲'}
-                    </span>
-                  </div>
-                  {!privacyCollapsed && (
-                    <>
-                      <p style={{ margin: 0 }}>
-                        All analysis happens entirely on your device. Nothing is stored on our servers or sent anywhere. Your financial data never leaves your browser.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        This is a free public tool designed to help everyone understand their finances better.
-                      </p>
-                    </>
-                  )}
-                </div>
-                <div style={{ 
-                  padding: '1rem 1.5rem', 
-                  background: 'rgba(0, 217, 255, 0.1)', 
-                  border: '1px solid rgba(0, 217, 255, 0.3)', 
-                  borderRadius: '12px', 
-                  marginBottom: '1.5rem',
-                  color: '#bfc9da',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.6'
-                }}>
-                  <div 
-                    style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center',
-                      cursor: 'pointer'
-                    }}
-                    onClick={() => setAutopilotCollapsed(!autopilotCollapsed)}
-                  >
-                    <strong style={{ color: '#00d9ff', display: 'block', marginBottom: '0.5rem' }}>🚀 Ready for Financial Autopilot?</strong>
-                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
-                      {autopilotCollapsed ? '▼' : '▲'}
-                    </span>
-                  </div>
-                  {!autopilotCollapsed && (
-                    <>
-                      <p style={{ margin: 0 }}>
-                        Downsell is the first step to showing you the problems. <strong>Broc solves them for you.</strong>
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Imagine this analysis running continuously in the background. When you're overpaying, Broc doesn't just tell you—it finds better deals, makes providers compete, and switches you automatically.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Active financial management that was once only available to the wealthy, now accessible to everyone through AI.
-                      </p>
-                      <p style={{ margin: '0.75rem 0 0 0' }}>
-                        Join the waitlist and be first when we launch.
-                      </p>
-                    </>
-                  )}
-                </div>
-                <div style={{ 
+                  width: '100%',
                   padding: '1rem 1.5rem', 
                   background: 'rgba(255, 255, 255, 0.05)', 
                   border: '1px solid rgba(255, 255, 255, 0.1)', 
@@ -1418,63 +1895,194 @@ const App: React.FC = () => {
                   fontSize: '0.95rem',
                   lineHeight: '1.6'
                 }}>
-                  <strong style={{ color: 'white', display: 'block', marginBottom: '0.75rem' }}>📋 Supported Banks</strong>
-                  <div style={{ 
-                    display: 'flex', 
-                    flexWrap: 'wrap', 
-                    gap: '0.75rem', 
-                    alignItems: 'center',
-                    marginBottom: '0.75rem'
-                  }}>
-                    <div style={{ 
+                  <div 
+                    style={{ 
                       display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
-                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
-                      <strong style={{ color: 'white' }}>Revolut</strong>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
-                      <span style={{ fontSize: '1.2rem' }}>🏛️</span>
-                      <strong style={{ color: 'white' }}>AIB</strong>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
-                      <span style={{ fontSize: '1.2rem' }}>🏦</span>
-                      <strong style={{ color: 'white' }}>Bank of Ireland</strong>
-                    </div>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      gap: '0.5rem',
-                      padding: '0.5rem 0.75rem',
-                      background: 'rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      border: '1px solid rgba(255, 255, 255, 0.2)'
-                    }}>
-                      <span style={{ fontSize: '1.2rem' }}>💳</span>
-                      <strong style={{ color: 'white' }}>N26</strong>
-                    </div>
+                      justifyContent: 'space-between', 
+                      alignItems: 'center',
+                      cursor: 'pointer'
+                    }}
+                    onClick={() => setSupportedBanksCollapsed(prev => !prev)}
+                    aria-expanded={!supportedBanksCollapsed}
+                    aria-label={supportedBanksCollapsed ? 'Show supported banks' : 'Hide supported banks'}
+                  >
+                    <strong style={{ color: 'white', display: 'block', marginBottom: '0.5rem' }}>🏦 Supported Banks</strong>
+                    <span style={{ color: '#888', fontSize: '1.2rem', userSelect: 'none' }}>
+                      {supportedBanksCollapsed ? '▼' : '▲'}
+                    </span>
                   </div>
+
+                  {!supportedBanksCollapsed && (
+                    <div style={{ 
+                      display: 'flex', 
+                      flexWrap: 'wrap', 
+                      gap: '1rem', 
+                      alignItems: 'center',
+                      marginTop: '0.75rem',
+                      marginBottom: '0.75rem'
+                    }}>
+                    {/* AIB - IE */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/ZcvnQ83.png" 
+                        alt="AIB" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>AIB</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
+                    </div>
+
+                    {/* Bank of Ireland - IE */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/Z9cqIo8.png" 
+                        alt="Bank of Ireland" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Bank of Ireland</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
+                    </div>
+
+                    {/* Bunq - IE */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/3HBtReM.png" 
+                        alt="Bunq" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Bunq</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
+                    </div>
+
+                    {/* Monzo - UK */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/g3fk1Cu.png" 
+                        alt="Monzo" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Monzo</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇬🇧 UK</span>
+                    </div>
+
+                    {/* N26 - IE */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/rr9wMgQ.png" 
+                        alt="N26" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>N26</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
+                    </div>
+
+                    {/* Nationwide - UK */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/nwQPNwc.png" 
+                        alt="Nationwide" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Nationwide</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇬🇧 UK</span>
+                    </div>
+
+                    {/* Permanent TSB - IE */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/sHapB2W.png" 
+                        alt="Permanent TSB" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Permanent TSB</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE</span>
+                    </div>
+
+                    {/* Revolut - IE / UK */}
+                    <div style={{ 
+                      display: 'flex', 
+                      flexDirection: 'column',
+                      alignItems: 'center', 
+                      gap: '0.35rem',
+                      padding: '0.75rem',
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)'
+                    }}>
+                      <img 
+                        src="https://i.imgur.com/hNxpqq9.png" 
+                        alt="Revolut" 
+                        style={{ width: '100px', height: '100px', objectFit: 'contain' }}
+                      />
+                      <strong style={{ color: 'white', fontSize: '0.9rem' }}>Revolut</strong>
+                      <span style={{ fontSize: '0.75rem', color: '#bfc9da', marginTop: '0.1rem' }}>🇮🇪 IE / 🇬🇧 UK</span>
+                    </div>
+                    </div>
+                  )}
+
                   <p style={{ margin: 0, fontSize: '0.85rem', color: '#888' }}>
                     We're expanding to support more banks in the coming weeks.
                   </p>
@@ -1571,11 +2179,11 @@ const App: React.FC = () => {
                   </div>
                   <div className="big-number-tile">
                     <div className="big-number-label">Total Spend</div>
-                    <div className="big-number-value">€{totalOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div className="big-number-value">{getCurrencySymbol(primaryCurrency)}{totalOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                   </div>
                   <div className="big-number-tile">
                     <div className="big-number-label">Subscription Spend</div>
-                    <div className="big-number-value">€{totalSubscriptions.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    <div className="big-number-value">{getCurrencySymbol(primaryCurrency)}{totalSubscriptions.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
                   </div>
                 </div>
                 {subscriptions.length > 0 && (
@@ -1620,7 +2228,7 @@ const App: React.FC = () => {
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value}`
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value}`
                               },
                               grid: {
                                 color: 'rgba(255, 255, 255, 0.1)'
@@ -1772,13 +2380,13 @@ const App: React.FC = () => {
                             y: {
                               title: {
                                 display: true,
-                                text: 'Cumulative Average Spend (€)',
+                                text: `Cumulative Average Spend (${getCurrencySymbol(primaryCurrency)})`,
                                 color: 'white',
                                 font: { weight: 'bold' }
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value}`
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value}`
                               },
                               grid: { color: 'rgba(255,255,255,0.1)' }
                             },
@@ -1792,7 +2400,7 @@ const App: React.FC = () => {
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value}`
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value}`
                               },
                               grid: {
                                 drawOnChartArea: false
@@ -1916,7 +2524,7 @@ const App: React.FC = () => {
                                   <tbody>
                                     <tr>
                                       <td>Total Spent:</td>
-                                      <td>€{(-sub.total).toFixed(2)}</td>
+                                      <td>{getCurrencySymbol(primaryCurrency)}{(-sub.total).toFixed(2)}</td>
                                     </tr>
                                     <tr>
                                       <td>Number of Payments:</td>
@@ -1924,11 +2532,11 @@ const App: React.FC = () => {
                                     </tr>
                                     <tr>
                                       <td>Average Payment:</td>
-                                      <td>€{(-sub.average).toFixed(2)}</td>
+                                      <td>{getCurrencySymbol(primaryCurrency)}{(-sub.average).toFixed(2)}</td>
                                     </tr>
                                     <tr>
                                       <td>Maximum Payment:</td>
-                                      <td>€{(-sub.maxAmount).toFixed(2)}</td>
+                                      <td>{getCurrencySymbol(primaryCurrency)}{(-sub.maxAmount).toFixed(2)}</td>
                                     </tr>
                                     <tr>
                                       <td>Frequency:</td>
@@ -2040,6 +2648,34 @@ const App: React.FC = () => {
                       </p>
                     </div>
 
+                    {/* Sankey Diagram - Spending Flow by Category */}
+                    {(() => {
+                      // Calculate spending by category
+                      const categorySpending: Record<string, number> = {};
+                      csvData.forEach(tx => {
+                        if (tx.Amount < 0) { // Only outgoing transactions
+                          const category = tx.Category || 'Other';
+                          categorySpending[category] = (categorySpending[category] || 0) + Math.abs(tx.Amount);
+                        }
+                      });
+
+                      // Show if there's any spending data
+                      const totalSpending = Object.values(categorySpending).reduce((sum, val) => sum + val, 0);
+                      const hasCategories = totalSpending > 0;
+                      
+                      return hasCategories ? (
+                        <>
+                          <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Spending Flow by Category</h2>
+                          <p style={{ marginBottom: '1rem', color: '#bfc9da', fontSize: '0.95rem' }}>
+                            Click on any category to see a detailed breakdown of transactions.
+                          </p>
+                          <div style={{ marginBottom: '2rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '2rem' }}>
+                            <SankeyDiagram data={categorySpending} transactions={csvData} />
+                          </div>
+                        </>
+                      ) : null;
+                    })()}
+
                     <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Top 15 Outgoings</h2>
                     <div style={{ marginBottom: '2.5rem', overflowX: 'auto' }}>
                       <table style={{ width: '100%', borderCollapse: 'collapse', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', overflow: 'hidden' }}>
@@ -2055,7 +2691,7 @@ const App: React.FC = () => {
                           {top15Outgoings.map((sub, index) => (
                             <tr key={sub.description} style={{ borderBottom: index < top15Outgoings.length - 1 ? '1px solid rgba(255, 255, 255, 0.1)' : 'none' }}>
                               <td style={{ padding: '1rem', color: 'white' }}>{sub.description}</td>
-                              <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>€{(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                              <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>{getCurrencySymbol(primaryCurrency)}{(-sub.total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                               <td style={{ padding: '1rem', textAlign: 'center', color: '#00d9ff' }}>{sub.frequencyLabel}</td>
                               <td style={{ padding: '1rem', textAlign: 'right', color: 'white' }}>{sub.count}</td>
                             </tr>
@@ -2128,7 +2764,7 @@ const App: React.FC = () => {
                               },
                               ticks: {
                                 color: 'white',
-                                callback: (value: any) => `€${value.toLocaleString()}`,
+                                callback: (value: any) => `${getCurrencySymbol(primaryCurrency)}${value.toLocaleString()}`,
                               },
                               grid: { color: 'rgba(255, 255, 255, 0.1)' },
                             },
@@ -2136,31 +2772,6 @@ const App: React.FC = () => {
                         }}
                       />
                     </div>
-
-                    {/* Sankey Diagram - Spending Flow by Category */}
-                    {(() => {
-                      // Calculate spending by category
-                      const categorySpending: Record<string, number> = {};
-                      csvData.forEach(tx => {
-                        if (tx.Amount < 0) { // Only outgoing transactions
-                          const category = tx.Category || 'Other';
-                          categorySpending[category] = (categorySpending[category] || 0) + Math.abs(tx.Amount);
-                        }
-                      });
-
-                      // Show if there's any spending data
-                      const totalSpending = Object.values(categorySpending).reduce((sum, val) => sum + val, 0);
-                      const hasCategories = totalSpending > 0;
-                      
-                      return hasCategories ? (
-                        <>
-                          <h2 style={{ marginTop: '2.5rem', marginBottom: '1.5rem' }}>Spending Flow by Category</h2>
-                          <div style={{ marginBottom: '2rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '12px', padding: '2rem' }}>
-                            <SankeyDiagram data={categorySpending} />
-                          </div>
-                        </>
-                      ) : null;
-                    })()}
 
                     <div style={{ marginTop: '2rem', textAlign: 'center' }}>
                       <button className="optimize-btn" onClick={handleDownloadReport}>Download PDF Report</button>
@@ -2595,11 +3206,11 @@ const App: React.FC = () => {
                                   color: isCredit ? '#4cc9f0' : 'white', 
                                   fontWeight: 500 
                                 }}>
-                                  {transaction.Amount >= 0 ? '+' : ''}€{Math.abs(transaction.Amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {transaction.Amount >= 0 ? '+' : ''}{getCurrencySymbol(transaction.Currency)}{Math.abs(transaction.Amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                 </td>
                                 <td style={{ padding: '1rem', textAlign: 'right', color: 'white', fontWeight: 500 }}>
                                   {transaction.Balance !== undefined && transaction.Balance !== 0 
-                                    ? `€${transaction.Balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
+                                    ? `${getCurrencySymbol(transaction.Currency)}${transaction.Balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
                                     : '-'}
                                 </td>
                               </tr>
@@ -2783,6 +3394,9 @@ const App: React.FC = () => {
                     <h2 style={{ fontSize: '1.8rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
                       4. Data Storage and Processing
                     </h2>
+                    <p style={{ marginBottom: '1rem' }}>
+                      No financial data is stored permanently. No personal data is sent to servers. Your privacy is protected.
+                    </p>
                     
                     {/* Privacy & Data Processing Diagram */}
                     <div style={{ 
@@ -2865,7 +3479,7 @@ const App: React.FC = () => {
                         background: 'rgba(45, 140, 255, 0.15)',
                         borderRadius: '8px'
                       }}>
-                        ✅ No data is stored permanently. No data is sent to servers. Your privacy is protected.
+                        ✅ No financial data is stored permanently. No personal data is sent to servers. Your privacy is protected.
                       </p>
                     </div>
 
@@ -2968,13 +3582,16 @@ const App: React.FC = () => {
                       9. Cookies and Tracking
                     </h2>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>Local Storage:</strong> We use your browser's local storage (not cookies) to store anonymous usage statistics. This data is stored locally on your device and is not transmitted to our servers.
+                      <strong style={{ color: 'white' }}>Local Storage:</strong> We use your browser's local storage (not cookies) to store anonymous usage statistics and category caching. This data is stored locally on your device and is not transmitted to our servers.
                     </p>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>No Tracking Cookies:</strong> We do not use tracking cookies, analytics cookies, or any other tracking technologies that monitor your behavior across websites.
+                      <strong style={{ color: 'white' }}>Netlify Analytics:</strong> We use Netlify Analytics to collect aggregate, anonymized usage statistics about how visitors interact with our site. Netlify Analytics uses cookies to track page views and user interactions. This helps us understand which features are most used and improve the user experience. Netlify Analytics is privacy-focused and does not collect personally identifiable information. For more information, see <a href="https://www.netlify.com/legal/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>Netlify's Privacy Policy</a>.
+                    </p>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Cookie Consent:</strong> When you first visit our site, we will ask for your consent to use analytics cookies. You can accept or reject these cookies. Your choice will be remembered for future visits. You can change your cookie preferences at any time by clearing your browser's local storage.
                     </p>
                     <p>
-                      <strong style={{ color: 'white' }}>No Third-Party Analytics:</strong> We do not use Google Analytics, Facebook Pixel, or any other third-party analytics services.
+                      <strong style={{ color: 'white' }}>No Third-Party Analytics:</strong> We do not use Google Analytics, Facebook Pixel, or any other third-party analytics services beyond Netlify Analytics.
                     </p>
                   </section>
 
@@ -3051,6 +3668,563 @@ const App: React.FC = () => {
         </div>
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+
+        {/* Bug Reporting Modal */}
+        {showBugReportModal && (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: '1rem',
+            }}
+            onClick={() => setShowBugReportModal(false)}
+          >
+            <div
+              style={{
+                background: 'linear-gradient(135deg, #1a2332 0%, #2a3b4c 100%)',
+                borderRadius: '16px',
+                padding: '2rem 2.5rem',
+                maxWidth: '540px',
+                width: '100%',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                border: '2px solid rgba(45, 140, 255, 0.3)',
+                position: 'relative',
+                textAlign: 'left',
+                color: 'white',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setShowBugReportModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                ×
+              </button>
+
+              <h2 style={{ margin: '0 0 0.75rem 0', fontSize: '1.5rem' }}>Bug reporting</h2>
+              <p style={{ margin: '0 0 1.25rem 0', fontSize: '0.95rem', lineHeight: 1.6, color: '#d0d8e6' }}>
+                Spotted something wrong? A feature missing or not working? Your bank not included? Send us a message here
+                and we'll be in touch shortly.
+              </p>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: '#c0cad8' }}>
+                    Email (optional)
+                  </label>
+                  <input
+                    type="email"
+                    value={bugReportEmail}
+                    onChange={(e) => setBugReportEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    style={{
+                      width: '100%',
+                      padding: '0.6rem 0.75rem',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      background: 'rgba(0, 0, 0, 0.2)',
+                      color: 'white',
+                      fontSize: '0.9rem',
+                    }}
+                  />
+                </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.85rem', color: '#c0cad8' }}>
+                    Your message
+                  </label>
+                  <textarea
+                    value={bugReportMessage}
+                    onChange={(e) => setBugReportMessage(e.target.value)}
+                    placeholder="Tell us what went wrong, what you expected, and any details that can help us reproduce the issue."
+                    rows={5}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.2)',
+                      background: 'rgba(0, 0, 0, 0.2)',
+                      color: 'white',
+                      fontSize: '0.9rem',
+                      resize: 'vertical',
+                    }}
+                  />
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: '1.5rem',
+                  display: 'flex',
+                  justifyContent: 'flex-end',
+                  gap: '0.75rem',
+                }}
+              >
+                <button
+                  onClick={() => setShowBugReportModal(false)}
+                  style={{
+                    padding: '0.6rem 1.2rem',
+                    borderRadius: '999px',
+                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                    background: 'transparent',
+                    color: '#d0d8e6',
+                    cursor: 'pointer',
+                    fontSize: '0.9rem',
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    trackButtonClick('Submit Bug Report', { hasEmail: !!bugReportEmail });
+                    // For now, just show a thanks message and clear the form.
+                    alert('Thanks for the report! We\'ll review it shortly.');
+                    setBugReportMessage('');
+                    setBugReportEmail('');
+                    setShowBugReportModal(false);
+                  }}
+                  disabled={!bugReportMessage.trim()}
+                  style={{
+                    padding: '0.6rem 1.5rem',
+                    borderRadius: '999px',
+                    border: 'none',
+                    background: bugReportMessage.trim() ? '#2d8cff' : 'rgba(45, 140, 255, 0.4)',
+                    color: 'white',
+                    cursor: bugReportMessage.trim() ? 'pointer' : 'not-allowed',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                  }}
+                >
+                  Send report
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Waitlist Modal */}
+        {showWaitlistModal && (
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0, 0, 0, 0.7)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 10000,
+              padding: '1rem'
+            }}
+            onClick={() => setShowWaitlistModal(false)}
+          >
+            <div 
+              style={{
+                background: 'linear-gradient(135deg, #1a2332 0%, #2a3b4c 100%)',
+                borderRadius: '16px',
+                padding: '2.5rem',
+                maxWidth: '500px',
+                width: '100%',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                border: '2px solid rgba(45, 140, 255, 0.3)',
+                position: 'relative',
+                textAlign: 'center'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Close button */}
+              <button
+                onClick={() => setShowWaitlistModal(false)}
+                style={{
+                  position: 'absolute',
+                  top: '1rem',
+                  right: '1rem',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  lineHeight: 1
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                ×
+              </button>
+              
+              {/* Logo */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <img 
+                  src="/broc_favicon1.png" 
+                  alt="Broc.fi Logo" 
+                  style={{ 
+                    width: '120px', 
+                    height: '120px', 
+                    objectFit: 'contain',
+                    filter: 'drop-shadow(0 4px 8px rgba(0, 0, 0, 0.3))'
+                  }} 
+                />
+              </div>
+              
+              {/* Text */}
+              <p style={{
+                color: 'white',
+                fontSize: '1.1rem',
+                lineHeight: 1.6,
+                marginBottom: '1.5rem',
+                fontWeight: 400
+              }}>
+                Psst, if you want the ultimate advantage in autonomous, agentic personal financial management, sign up here
+              </p>
+              
+              {/* Email Input */}
+              <input
+                type="email"
+                value={waitlistEmail}
+                onChange={(e) => setWaitlistEmail(e.target.value)}
+                placeholder="Enter your email address"
+                style={{
+                  width: '100%',
+                  padding: '0.875rem 1rem',
+                  borderRadius: '8px',
+                  border: '2px solid rgba(255, 255, 255, 0.2)',
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  color: 'white',
+                  fontSize: '1rem',
+                  marginBottom: '1.5rem',
+                  outline: 'none',
+                  transition: 'all 0.3s ease',
+                  boxSizing: 'border-box'
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = '#2d8cff';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.15)';
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              />
+              
+              {/* Buttons */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {/* Sign up Button */}
+                <button
+                  onClick={async () => {
+                    if (waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)) {
+                      trackButtonClick('Sign Up', { location: 'waitlist_modal', email: waitlistEmail });
+                      
+                      try {
+                        // Call Netlify Function to add to Google Sheet
+                        const response = await fetch('/.netlify/functions/signup-waitlist', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                          },
+                          body: JSON.stringify({ email: waitlistEmail }),
+                        });
+
+                        if (response.ok) {
+                          const result = await response.json();
+                          // Success (including duplicates) - close modal and show thank you message
+                          if (result.duplicate) {
+                            // Email already on waitlist - still show success
+                            console.log('Email already on waitlist');
+                          }
+                          setShowWaitlistModal(false);
+                          setWaitlistEmail('');
+                          // Show thank you message
+                          setShowThankYou(true);
+                          // Hide message after 3 seconds
+                          setTimeout(() => {
+                            setShowThankYou(false);
+                          }, 3000);
+                        } else {
+                          // Error - show alert
+                          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                          console.error('Failed to add signup to waitlist:', errorData);
+                          alert('There was an error adding you to the waitlist. Please try again.');
+                        }
+                      } catch (error) {
+                        // Network error
+                        console.error('Error signing up:', error);
+                        alert('There was an error adding you to the waitlist. Please try again.');
+                      }
+                    }
+                  }}
+                  disabled={!waitlistEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)}
+                  style={{
+                    background: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)
+                      ? 'linear-gradient(135deg, #2d8cff 0%, #1a5fcc 100%)'
+                      : 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    border: 'none',
+                    padding: '1rem 2rem',
+                    borderRadius: '8px',
+                    fontSize: '1.1rem',
+                    fontWeight: 600,
+                    cursor: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail) ? 'pointer' : 'not-allowed',
+                    width: '100%',
+                    boxShadow: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)
+                      ? '0 4px 12px rgba(45, 140, 255, 0.4)'
+                      : 'none',
+                    transition: 'all 0.3s ease',
+                    opacity: waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail) ? 1 : 0.5
+                  }}
+                  onMouseEnter={(e) => {
+                    if (waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)) {
+                      e.currentTarget.style.transform = 'translateY(-2px)';
+                      e.currentTarget.style.boxShadow = '0 6px 16px rgba(45, 140, 255, 0.6)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (waitlistEmail && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(waitlistEmail)) {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 140, 255, 0.4)';
+                    }
+                  }}
+                >
+                  Sign up
+                </button>
+                
+                {/* What is Broc? Button */}
+                <button
+                  onClick={() => {
+                    trackButtonClick('What is Broc?', { location: 'waitlist_modal' });
+                    window.open('https://broc.fi', '_blank');
+                  }}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.1)',
+                    color: 'white',
+                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                    padding: '0.875rem 2rem',
+                    borderRadius: '8px',
+                    fontSize: '1rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    width: '100%',
+                    transition: 'all 0.3s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.3)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.2)';
+                  }}
+                >
+                  What is Broc?
+                </button>
+                
+                {/* I'm already signed up Button */}
+                <button
+                  onClick={() => {
+                    trackButtonClick('Already Signed Up', { location: 'waitlist_modal' });
+                    setShowWaitlistModal(false);
+                    setWaitlistEmail('');
+                  }}
+                  style={{
+                    background: 'transparent',
+                    color: '#bfc9da',
+                    border: 'none',
+                    padding: '0.75rem 2rem',
+                    borderRadius: '8px',
+                    fontSize: '0.95rem',
+                    fontWeight: 400,
+                    cursor: 'pointer',
+                    width: '100%',
+                    transition: 'all 0.3s ease',
+                    textDecoration: 'underline'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = 'white';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = '#bfc9da';
+                  }}
+                >
+                  I'm already signed up
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Cookie Consent Banner */}
+        {showCookieBanner && (
+          <div 
+            style={{
+              position: 'fixed',
+              bottom: 0,
+              left: 0,
+              right: 0,
+              background: 'linear-gradient(135deg, #1a2332 0%, #2a3b4c 100%)',
+              borderTop: '2px solid rgba(45, 140, 255, 0.3)',
+              padding: '1.5rem',
+              zIndex: 10001,
+              boxShadow: '0 -4px 20px rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '1rem',
+              maxWidth: '100%'
+            }}
+          >
+            <div style={{ flex: '1', minWidth: '300px' }}>
+              <p style={{ 
+                color: 'white', 
+                margin: 0, 
+                marginBottom: '0.5rem',
+                fontSize: '1rem',
+                fontWeight: 600
+              }}>
+                🍪 Cookie Consent
+              </p>
+              <p style={{ 
+                color: '#bfc9da', 
+                margin: 0, 
+                fontSize: '0.9rem',
+                lineHeight: 1.5
+              }}>
+                We use Netlify Analytics cookies to collect aggregate, anonymized usage statistics to improve our site. 
+                This helps us understand how visitors use Downsell. No personally identifiable information is collected. 
+                <a 
+                  href="#privacy" 
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveTab('Privacy Policy');
+                    setShowCookieBanner(false);
+                  }}
+                  style={{ color: '#2d8cff', textDecoration: 'none', marginLeft: '0.25rem' }}
+                >
+                  Learn more
+                </a>
+              </p>
+            </div>
+            <div style={{ 
+              display: 'flex', 
+              gap: '0.75rem',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={handleRejectCookies}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  fontSize: '0.95rem',
+                  fontWeight: 500,
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                Reject
+              </button>
+              <button
+                onClick={handleAcceptCookies}
+                style={{
+                  background: 'linear-gradient(135deg, #2d8cff 0%, #1a5fcc 100%)',
+                  border: 'none',
+                  color: 'white',
+                  padding: '0.75rem 1.5rem',
+                  borderRadius: '8px',
+                  fontSize: '0.95rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(45, 140, 255, 0.4)',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(45, 140, 255, 0.6)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'translateY(0)';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(45, 140, 255, 0.4)';
+                }}
+              >
+                Accept
+              </button>
+            </div>
+          </div>
+        )}
+        
+        {/* Thank You Message */}
+        {showThankYou && (
+          <div
+            style={{
+              position: 'fixed',
+              bottom: '2rem',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              background: 'linear-gradient(135deg, #2d8cff 0%, #1a5fcc 100%)',
+              color: 'white',
+              padding: '1.5rem 2.5rem',
+              borderRadius: '12px',
+              fontSize: '1.5rem',
+              fontWeight: 600,
+              zIndex: 10002,
+              boxShadow: '0 8px 24px rgba(45, 140, 255, 0.5)',
+              animation: 'slideUp 0.5s ease-out, fadeOut 0.5s ease-in 2.5s',
+              animationFillMode: 'forwards',
+              pointerEvents: 'none'
+            }}
+          >
+            thank you! &lt;3
+          </div>
+        )}
       </div>
   );
 };

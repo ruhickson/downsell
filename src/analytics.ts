@@ -1,8 +1,20 @@
 // Analytics tracking utility (Netlify Functions)
 // Each event type has its own function for separate metrics tracking
 
+// Check if user has consented to analytics cookies
+function hasConsentedToCookies(): boolean {
+  if (typeof window === 'undefined') return false;
+  const consent = localStorage.getItem('cookie-consent');
+  return consent === 'accepted';
+}
+
 // Helper to send event to specific function
 function sendEvent(functionName: string, data: Record<string, any>) {
+  // Only track if user has consented to cookies
+  if (!hasConsentedToCookies()) {
+    return; // Silently skip tracking if consent not given
+  }
+  
   if (typeof window !== 'undefined') {
     try {
       fetch(`/.netlify/functions/${functionName}`, {

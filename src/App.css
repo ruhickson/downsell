@@ -32,6 +32,27 @@ body {
   100% { transform: rotate(360deg); }
 }
 
+@keyframes slideUp {
+  0% {
+    transform: translateX(-50%) translateY(100px);
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(-50%) translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeOut {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-50px);
+  }
+}
+
 .dashboard-container {
   max-width: 1800px;
   margin: 0 auto;
@@ -657,4 +678,23 @@ input[type="file"]:hover {
 .transaction-filter-select option {
   background: #2a3b4c !important;
   color: white !important;
+}
+
+/* Sankey diagram scrollbar styling */
+.sankey-container::-webkit-scrollbar {
+  height: 8px;
+}
+
+.sankey-container::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.sankey-container::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 4px;
+}
+
+.sankey-container::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.5);
 }
