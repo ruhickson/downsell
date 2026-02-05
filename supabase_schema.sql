@@ -257,3 +257,171 @@ CREATE POLICY "Allow service role reads" ON page_views
   FOR SELECT
   USING (true);
 
+-- ============================================
+-- USER DATA TABLES (for persisting user CSV uploads and analysis)
+-- ============================================
+
+-- Table for storing user transactions (from uploaded CSV files)
+CREATE TABLE IF NOT EXISTS user_transactions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  description TEXT NOT NULL,
+  amount NUMERIC(15, 2) NOT NULL,
+  type TEXT NOT NULL,
+  date DATE NOT NULL,
+  currency TEXT NOT NULL,
+  balance NUMERIC(15, 2),
+  bank_source TEXT NOT NULL,
+  account TEXT NOT NULL,
+  category TEXT,
+  original_data JSONB, -- Store original transaction data as JSON
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast lookups by user email
+CREATE INDEX IF NOT EXISTS idx_user_transactions_email ON user_transactions(user_email);
+-- Index for date range queries
+CREATE INDEX IF NOT EXISTS idx_user_transactions_date ON user_transactions(user_email, date DESC);
+-- Index for account queries
+CREATE INDEX IF NOT EXISTS idx_user_transactions_account ON user_transactions(user_email, account);
+
+-- Table for storing user subscriptions (detected from transactions)
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  description TEXT NOT NULL,
+  total NUMERIC(15, 2) NOT NULL,
+  count INTEGER NOT NULL,
+  average NUMERIC(15, 2) NOT NULL,
+  max_amount NUMERIC(15, 2) NOT NULL,
+  standard_deviation NUMERIC(15, 2) NOT NULL,
+  time_span INTEGER, -- in days
+  frequency NUMERIC(10, 2), -- transactions per month
+  avg_days_between NUMERIC(10, 2),
+  first_date DATE,
+  last_date DATE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast lookups by user email
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_email ON user_subscriptions(user_email);
+
+-- Table for storing metadata about uploaded CSV files
+CREATE TABLE IF NOT EXISTS user_uploaded_files (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_email TEXT NOT NULL,
+  bank_type TEXT NOT NULL,
+  row_count INTEGER NOT NULL,
+  account TEXT NOT NULL,
+  file_name TEXT,
+  file_size BIGINT,
+  file_type TEXT,
+  last_modified BIGINT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Index for fast lookups by user email
+CREATE INDEX IF NOT EXISTS idx_user_uploaded_files_email ON user_uploaded_files(user_email);
+
+-- Function to update updated_at timestamp for user data tables
+CREATE OR REPLACE FUNCTION update_user_data_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Triggers to auto-update updated_at
+DROP TRIGGER IF EXISTS trigger_update_user_transactions_updated_at ON user_transactions;
+CREATE TRIGGER trigger_update_user_transactions_updated_at
+  BEFORE UPDATE ON user_transactions
+  FOR EACH ROW
+  EXECUTE FUNCTION update_user_data_updated_at();
+
+DROP TRIGGER IF EXISTS trigger_update_user_subscriptions_updated_at ON user_subscriptions;
+CREATE TRIGGER trigger_update_user_subscriptions_updated_at
+  BEFORE UPDATE ON user_subscriptions
+  FOR EACH ROW
+  EXECUTE FUNCTION update_user_data_updated_at();
+
+DROP TRIGGER IF EXISTS trigger_update_user_uploaded_files_updated_at ON user_uploaded_files;
+CREATE TRIGGER trigger_update_user_uploaded_files_updated_at
+  BEFORE UPDATE ON user_uploaded_files
+  FOR EACH ROW
+  EXECUTE FUNCTION update_user_data_updated_at();
+
+-- Enable Row Level Security (RLS) for user data tables
+ALTER TABLE user_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_subscriptions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_uploaded_files ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for user_transactions
+-- Users can only access their own transactions
+DROP POLICY IF EXISTS "Users can read own transactions" ON user_transactions;
+CREATE POLICY "Users can read own transactions" ON user_transactions
+  FOR SELECT
+  USING (true); -- For now, allow reads (we'll filter by email in the app)
+
+DROP POLICY IF EXISTS "Users can insert own transactions" ON user_transactions;
+CREATE POLICY "Users can insert own transactions" ON user_transactions
+  FOR INSERT
+  WITH CHECK (true); -- For now, allow inserts (we'll validate email in the app)
+
+DROP POLICY IF EXISTS "Users can update own transactions" ON user_transactions;
+CREATE POLICY "Users can update own transactions" ON user_transactions
+  FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can delete own transactions" ON user_transactions;
+CREATE POLICY "Users can delete own transactions" ON user_transactions
+  FOR DELETE
+  USING (true);
+
+-- RLS Policies for user_subscriptions
+DROP POLICY IF EXISTS "Users can read own subscriptions" ON user_subscriptions;
+CREATE POLICY "Users can read own subscriptions" ON user_subscriptions
+  FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Users can insert own subscriptions" ON user_subscriptions;
+CREATE POLICY "Users can insert own subscriptions" ON user_subscriptions
+  FOR INSERT
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can update own subscriptions" ON user_subscriptions;
+CREATE POLICY "Users can update own subscriptions" ON user_subscriptions
+  FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can delete own subscriptions" ON user_subscriptions;
+CREATE POLICY "Users can delete own subscriptions" ON user_subscriptions
+  FOR DELETE
+  USING (true);
+
+-- RLS Policies for user_uploaded_files
+DROP POLICY IF EXISTS "Users can read own uploaded files" ON user_uploaded_files;
+CREATE POLICY "Users can read own uploaded files" ON user_uploaded_files
+  FOR SELECT
+  USING (true);
+
+DROP POLICY IF EXISTS "Users can insert own uploaded files" ON user_uploaded_files;
+CREATE POLICY "Users can insert own uploaded files" ON user_uploaded_files
+  FOR INSERT
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can update own uploaded files" ON user_uploaded_files;
+CREATE POLICY "Users can update own uploaded files" ON user_uploaded_files
+  FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Users can delete own uploaded files" ON user_uploaded_files;
+CREATE POLICY "Users can delete own uploaded files" ON user_uploaded_files
+  FOR DELETE
+  USING (true);

@@ -14,12 +14,16 @@ import {
   LineElement,
   Filler,
 } from 'chart.js';
+import { GoogleLogin } from '@react-oauth/google';
+import { jwtDecode } from 'jwt-decode';
 import './App.css';
 import jsPDF from 'jspdf';
 import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
 import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
 import { enhanceCategoriesWithLLM } from './categoryEnhancer';
 import SankeyDiagram from './SankeyDiagram';
+import { fetchQuilttConnectedBanks, fetchQuilttTransactions, type QuilttConnectedBank, type QuilttTransaction } from './quilttIntegration';
+import { saveUserData, loadUserData, deleteFileAndAssociatedData } from './userDataService';
 
 ChartJS.register(
   CategoryScale,
@@ -46,6 +50,7 @@ function getCurrencySymbol(currency: string): string {
       return '€';
   }
 }
+
 
 // Raw transaction from CSV (can be from any bank)
 type RawTransaction = {
@@ -632,8 +637,9 @@ const TAB_LABELS = [
   { label: 'Report', icon: '📄' },
   { label: 'Actions', icon: '⚡' },
   { label: 'Transactions', icon: '💳' },
+  { label: 'My files', icon: '📁' },
   { label: 'Account (soon)', icon: '👤' },
-  { label: 'About', icon: 'ℹ️' },
+  { label: 'About', icon: 'ℹ' },
   { label: 'Privacy Policy', icon: '🔒' },
 ];
 
@@ -681,7 +687,9 @@ const App: React.FC = () => {
   const [dragActive, setDragActive] = useState(false);
   const [_isMobile, setIsMobile] = useState(false);
   const [supportedBanksCollapsed, setSupportedBanksCollapsed] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string }>>([]);
+  const [connectedBanks, setConnectedBanks] = useState<QuilttConnectedBank[]>([]);
+  const [isQuilttLoading, setIsQuilttLoading] = useState(false);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string; createdAt?: string }>>([]);
   const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Monzo: number }>({
     AIB: 0,
     Revolut: 0,
@@ -708,6 +716,9 @@ const App: React.FC = () => {
   const [showBugReportModal, setShowBugReportModal] = React.useState<boolean>(false);
   const [bugReportMessage, setBugReportMessage] = React.useState<string>('');
   const [bugReportEmail, setBugReportEmail] = React.useState<string>('');
+  // Google OAuth user state
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<any>(null);
 
   // Check cookie consent on mount
   useEffect(() => {
@@ -715,6 +726,156 @@ const App: React.FC = () => {
     if (!consent) {
       setShowCookieBanner(true);
     }
+  }, []);
+
+  // Fetch user profile when user logs in and load saved data
+  useEffect(() => {
+    if (user && user.credential) {
+      try {
+        // Decode the JWT credential to get user info
+        const decoded = jwtDecode<{
+          email: string;
+          name: string;
+          picture: string;
+          given_name?: string;
+          family_name?: string;
+        }>(user.credential);
+        
+        const profileData = {
+          email: decoded.email,
+          name: decoded.name || decoded.given_name || 'User',
+          picture: decoded.picture,
+          given_name: decoded.given_name,
+          family_name: decoded.family_name
+        };
+        
+        console.log('✅ Profile loaded:', profileData.email);
+        setProfile(profileData);
+        
+        // Load saved user data
+        if (profileData.email) {
+          loadUserData(profileData.email).then((savedData) => {
+            if (savedData) {
+              console.log('🔄 Restoring user data:', {
+                csvData: savedData.csvData?.length || 0,
+                subscriptions: savedData.subscriptions?.length || 0,
+                uploadedFiles: savedData.uploadedFiles?.length || 0
+              });
+              setCsvData(savedData.csvData || []);
+              setSubscriptions(savedData.subscriptions || []);
+              // Note: uploadedFiles can't be fully restored (File objects can't be serialized),
+              // but metadata is preserved for display purposes. The actual transaction data
+              // is in csvData, which is what matters.
+              if (savedData.uploadedFiles && savedData.uploadedFiles.length > 0) {
+                // Convert metadata back to a format compatible with the state type
+                // We'll create placeholder File objects or just use the metadata
+                const restoredFiles = savedData.uploadedFiles.map((fileMeta: any) => ({
+                  bankType: fileMeta.bankType,
+                  rowCount: fileMeta.rowCount,
+                  account: fileMeta.account,
+                  createdAt: fileMeta.createdAt, // Include timestamp
+                  // Create a minimal File-like object for compatibility
+                  file: new File([], fileMeta.fileName || 'restored.csv', { 
+                    type: fileMeta.fileType || 'text/csv',
+                    lastModified: fileMeta.lastModified || Date.now()
+                  })
+                }));
+                setUploadedFiles(restoredFiles);
+              }
+            } else {
+              console.log('📭 No saved data found for user:', profileData.email);
+            }
+          }).catch((err) => {
+            console.error('Failed to load user data:', err);
+          });
+        }
+      } catch (err) {
+        console.error('Failed to decode JWT:', err);
+      }
+    } else {
+      // Clear data when user logs out
+      if (profile?.email) {
+        // Optionally clear data on logout, or keep it for next login
+        // clearUserData(profile.email);
+      }
+    }
+  }, [user]);
+
+  // Save user data whenever csvData, subscriptions, or uploadedFiles change
+  // Only save if user is logged in and there's actual data
+  useEffect(() => {
+    // Skip saving if user is not set
+    if (!user) {
+      if (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0) {
+        console.log('⚠️ Data exists but user not logged in - skipping save', {
+          hasProfile: !!profile?.email,
+          hasUser: !!user,
+          csvDataCount: csvData.length,
+          subscriptionsCount: subscriptions.length
+        });
+      }
+      return;
+    }
+    
+    // If user is set but profile is not yet loaded, wait for profile
+    if (!profile?.email) {
+      console.log('⏳ User logged in but profile not yet loaded, will save when profile is available...', {
+        hasUser: !!user,
+        csvDataCount: csvData.length,
+        subscriptionsCount: subscriptions.length
+      });
+      return;
+    }
+    
+    // Only save if there's actual data to save
+    if (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0) {
+      console.log('💾 Auto-saving user data...', {
+        email: profile.email,
+        csvDataCount: csvData.length,
+        subscriptionsCount: subscriptions.length,
+        uploadedFilesCount: uploadedFiles.length
+      });
+      saveUserData(profile.email, {
+        csvData,
+        subscriptions,
+        uploadedFiles
+      });
+    }
+  }, [csvData, subscriptions, uploadedFiles, profile?.email, user]);
+  
+  // Also save when profile becomes available (in case data was set before profile loaded)
+  useEffect(() => {
+    if (profile?.email && user && (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0)) {
+      console.log('💾 Profile now available - saving existing data...', {
+        email: profile.email,
+        csvDataCount: csvData.length,
+        subscriptionsCount: subscriptions.length,
+        uploadedFilesCount: uploadedFiles.length
+      });
+      saveUserData(profile.email, {
+        csvData,
+        subscriptions,
+        uploadedFiles
+      });
+    }
+  }, [profile?.email, user, csvData, subscriptions, uploadedFiles]);
+
+  // Load Quiltt-connected banks on mount (placeholder implementation).
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const banks = await fetchQuilttConnectedBanks();
+        if (!cancelled) {
+          setConnectedBanks(banks);
+        }
+      } catch (error) {
+        console.error('[Quiltt] Failed to load connected banks', error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const handleAcceptCookies = () => {
@@ -750,6 +911,39 @@ const App: React.FC = () => {
     'Three or more times a week',
     'Daily',
   ];
+
+  const importQuilttTransactions = async () => {
+    try {
+      setIsQuilttLoading(true);
+      const quilttTx: QuilttTransaction[] = await fetchQuilttTransactions();
+      if (!quilttTx || quilttTx.length === 0) {
+        console.log('[Quiltt] No transactions returned to import.');
+        return;
+      }
+
+      setCsvData(prevData => {
+        const mergedData: Transaction[] = [
+          ...prevData,
+          // QuilttTransaction matches Transaction shape
+          ...quilttTx as unknown as Transaction[],
+        ];
+
+        mergedData.sort((a, b) => {
+          const dateA = new Date(a.Date).getTime();
+          const dateB = new Date(b.Date).getTime();
+          return dateB - dateA;
+        });
+
+        setSubscriptions(analyzeBankStatement(mergedData));
+        return mergedData;
+      });
+    } catch (error) {
+      console.error('[Quiltt] Failed to import transactions', error);
+      alert('We could not import transactions from your connected banks. Please try again in a moment.');
+    } finally {
+      setIsQuilttLoading(false);
+    }
+  };
   
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
@@ -1002,27 +1196,43 @@ const App: React.FC = () => {
             });
             
             // Re-analyze subscriptions with merged data
-            setSubscriptions(analyzeBankStatement(mergedData));
+            const newSubscriptions = analyzeBankStatement(mergedData);
+            setSubscriptions(newSubscriptions);
             
             return mergedData;
           });
           
-          // Update uploaded files list (check for duplicates)
+          // Update uploaded files list
+          // Note: Duplicate checking is done before processCSVFile is called
           setUploadedFiles(prevFiles => {
-            // Check if this file already exists (by name, size, and lastModified)
-            const isDuplicate = prevFiles.some(existingFile => 
-              existingFile.file.name === file.name &&
-              existingFile.file.size === file.size &&
-              existingFile.file.lastModified === file.lastModified
-            );
-            
-            if (isDuplicate) {
-              console.log(`Skipping duplicate file: ${file.name}`);
-              return prevFiles; // Don't add duplicate
-            }
-            
             const newFile = { file, bankType, rowCount, account };
-            return mergeWithExisting ? [...prevFiles, newFile] : [newFile];
+            const updatedFiles = mergeWithExisting ? [...prevFiles, newFile] : [newFile];
+            
+            // Trigger save after a short delay to ensure state is updated
+            setTimeout(() => {
+              if (profile?.email && user) {
+                // Get current state using functional updates
+                setCsvData(currentCsvData => {
+                  setSubscriptions(currentSubscriptions => {
+                    console.log('💾 Manual save after CSV processing...', {
+                      email: profile.email,
+                      csvDataCount: currentCsvData.length,
+                      subscriptionsCount: currentSubscriptions.length,
+                      uploadedFilesCount: updatedFiles.length
+                    });
+                    saveUserData(profile.email, {
+                      csvData: currentCsvData,
+                      subscriptions: currentSubscriptions,
+                      uploadedFiles: updatedFiles
+                    });
+                    return currentSubscriptions;
+                  });
+                  return currentCsvData;
+                });
+              }
+            }, 500);
+            
+            return updatedFiles;
           });
           
         incrementStat('files_uploaded');
@@ -1049,6 +1259,35 @@ const App: React.FC = () => {
     });
   };
 
+  // Helper function to check if a file is a duplicate
+  // Checks against both current session files and files loaded from database
+  const isFileDuplicate = (file: File): boolean => {
+    return uploadedFiles.some(existingFile => {
+      // Get file properties from the File object
+      const existingName = existingFile.file.name;
+      const existingSize = existingFile.file.size;
+      const existingLastModified = existingFile.file.lastModified;
+      
+      // Also check if we have metadata from database (for restored files)
+      // This handles files that were loaded from the database
+      const matchesFileObject = existingName === file.name &&
+                                existingSize === file.size &&
+                                existingLastModified === file.lastModified;
+      
+      // If the file object matches, it's a duplicate
+      if (matchesFileObject) {
+        return true;
+      }
+      
+      // Also check by name and size only (in case lastModified differs slightly)
+      // This catches cases where the same file is uploaded again even if metadata differs slightly
+      const matchesByNameAndSize = existingName === file.name &&
+                                   existingSize === file.size;
+      
+      return matchesByNameAndSize;
+    });
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -1059,11 +1298,37 @@ const App: React.FC = () => {
       alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
     }
     
-    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'file_input', file_count: fileArray.length });
+    // Check for duplicates before processing
+    const duplicates: File[] = [];
+    const filesToProcess: File[] = [];
     
-    // Process files sequentially to avoid state conflicts
-    for (let i = 0; i < fileArray.length; i++) {
-      await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
+    fileArray.forEach(file => {
+      if (isFileDuplicate(file)) {
+        duplicates.push(file);
+      } else {
+        filesToProcess.push(file);
+      }
+    });
+    
+    // Show alert if duplicates found
+    if (duplicates.length > 0) {
+      const duplicateNames = duplicates.map(f => f.name).join(', ');
+      alert(`The following file(s) have already been uploaded and will be skipped:\n${duplicateNames}`);
+    }
+    
+    if (filesToProcess.length === 0) {
+      // Reset input
+      if (inputRef.current) {
+        inputRef.current.value = '';
+      }
+      return; // All files were duplicates
+    }
+    
+    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'file_input', file_count: filesToProcess.length });
+    
+    // Process only non-duplicate files sequentially to avoid state conflicts
+    for (let i = 0; i < filesToProcess.length; i++) {
+      await processCSVFile(filesToProcess[i], i > 0 || csvData.length > 0);
     }
     
     // Reset input to allow selecting the same files again
@@ -1071,8 +1336,9 @@ const App: React.FC = () => {
       inputRef.current.value = '';
     }
     
-    // Show waitlist modal after processing (only once per session)
-    if (!hasShownWaitlistModal) {
+    // Show waitlist modal after processing (only if user hasn't interacted with it before)
+    const hasInteractedWithModal = localStorage.getItem('broc-waitlist-modal-interacted') === 'true';
+    if (!hasShownWaitlistModal && !hasInteractedWithModal) {
       setTimeout(() => {
         setShowWaitlistModal(true);
         setHasShownWaitlistModal(true);
@@ -1104,15 +1370,38 @@ const App: React.FC = () => {
       alert(`You can upload up to 5 files at once. Only the first 5 files will be processed.`);
     }
     
-    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'drag_drop', file_count: fileArray.length });
+    // Check for duplicates before processing
+    const duplicates: File[] = [];
+    const filesToProcess: File[] = [];
     
-    // Process files sequentially to avoid state conflicts
-    for (let i = 0; i < fileArray.length; i++) {
-      await processCSVFile(fileArray[i], i > 0 || csvData.length > 0);
+    fileArray.forEach(file => {
+      if (isFileDuplicate(file)) {
+        duplicates.push(file);
+      } else {
+        filesToProcess.push(file);
+      }
+    });
+    
+    // Show alert if duplicates found
+    if (duplicates.length > 0) {
+      const duplicateNames = duplicates.map(f => f.name).join(', ');
+      alert(`The following file(s) have already been uploaded and will be skipped:\n${duplicateNames}`);
     }
     
-    // Show waitlist modal after processing (only once per session)
-    if (!hasShownWaitlistModal) {
+    if (filesToProcess.length === 0) {
+      return; // All files were duplicates
+    }
+    
+    trackButtonClick('CSV Upload', { location: 'analysis_page', method: 'drag_drop', file_count: filesToProcess.length });
+    
+    // Process only non-duplicate files sequentially to avoid state conflicts
+    for (let i = 0; i < filesToProcess.length; i++) {
+      await processCSVFile(filesToProcess[i], i > 0 || csvData.length > 0);
+    }
+    
+    // Show waitlist modal after processing (only if user hasn't interacted with it before)
+    const hasInteractedWithModal = localStorage.getItem('broc-waitlist-modal-interacted') === 'true';
+    if (!hasShownWaitlistModal && !hasInteractedWithModal) {
       setTimeout(() => {
         setShowWaitlistModal(true);
         setHasShownWaitlistModal(true);
@@ -1738,13 +2027,75 @@ const App: React.FC = () => {
             </button>
             <div className="topbar-title" style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 700 }}>Downsell by Broc.fi</div>
             <div className="topbar-right">
+              {user && profile ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <div className="user-profile">
+                    {profile.picture && (
+                      <img 
+                        src={profile.picture} 
+                        alt={profile.name || 'User'} 
+                        className="user-avatar"
+                      />
+                    )}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <span className="welcome-message">
+                        Welcome back
+                      </span>
+                      <span className="user-name">
+                        {profile.name || profile.email}
+                      </span>
+                    </div>
+                  </div>
+                  <button 
+                    className="optimize-btn" 
+                    onClick={() => {
+                      // Save data before logout (in case of any unsaved changes)
+                      if (profile?.email) {
+                        saveUserData(profile.email, {
+                          csvData,
+                          subscriptions,
+                          uploadedFiles
+                        });
+                      }
+                      // Clear UI state but keep data in localStorage
+                      setUser(null);
+                      setProfile(null);
+                      setCsvData([]);
+                      setSubscriptions([]);
+                      setUploadedFiles([]);
+                      // Redirect to Analysis screen
+                      setActiveTab('Analysis');
+                      trackButtonClick('Logout', { location: 'header' });
+                    }}
+                    style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                  >
+                    Logout
+                  </button>
+                </div>
+              ) : (
+                <GoogleLogin
+                  onSuccess={(credentialResponse) => {
+                    setUser(credentialResponse);
+                    trackButtonClick('Google Login', { location: 'header' });
+                  }}
+                  onError={() => {
+                    console.error('Login Failed');
+                    trackButtonClick('Google Login Error', { location: 'header' });
+                  }}
+                  useOneTap
+                  theme="filled_blue"
+                  size="medium"
+                  text="signin_with"
+                  shape="rectangular"
+                />
+              )}
               <button 
                 className="optimize-btn" 
                 onClick={() => {
                   trackButtonClick('Join Waitlist', { location: 'header' });
                   window.open('https://broc.fi', '_blank');
                 }}
-                style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                style={{ padding: '0.5rem 1rem', fontSize: '0.9rem', marginLeft: '0.5rem' }}
               >
                 Join the Waitlist
               </button>
@@ -1884,6 +2235,57 @@ const App: React.FC = () => {
                     )}
                   </div>
                 </div>
+                {/* Connected banks section - hidden */}
+                {false && (
+                <div style={{ 
+                  width: '100%',
+                  padding: '1rem 1.5rem', 
+                  background: 'rgba(255, 255, 255, 0.05)', 
+                  border: '1px solid rgba(255, 255, 255, 0.1)', 
+                  borderRadius: '12px', 
+                  marginBottom: '2rem',
+                  color: '#bfc9da',
+                  fontSize: '0.95rem',
+                  lineHeight: '1.6'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <strong style={{ color: 'white' }}>Connected banks (via Quiltt)</strong>
+                    {isQuilttLoading && (
+                      <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Refreshing…</span>
+                    )}
+                  </div>
+                  {connectedBanks.length === 0 ? (
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#9ca3af' }}>
+                      No banks connected yet. Use the <strong>Connect your banks</strong> button above to link an account.
+                    </p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                      {connectedBanks.map(bank => (
+                        <span
+                          key={bank.id}
+                          style={{
+                            padding: '0.35rem 0.7rem',
+                            borderRadius: '999px',
+                            background: bank.status === 'connected' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(248, 113, 113, 0.12)',
+                            border: `1px solid ${bank.status === 'connected' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(248, 113, 113, 0.6)'}`,
+                            fontSize: '0.8rem',
+                            color: '#e5e7eb',
+                          }}
+                        >
+                          {bank.institutionName}
+                          {bank.lastSyncedAt && (
+                            <span style={{ marginLeft: '0.4rem', color: '#9ca3af' }}>
+                              · synced {new Date(bank.lastSyncedAt).toLocaleDateString()}
+                            </span>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                )}
+                {/* Supported banks section - hidden */}
+                {false && (
                 <div style={{ 
                   width: '100%',
                   padding: '1rem 1.5rem', 
@@ -2087,6 +2489,53 @@ const App: React.FC = () => {
                     We're expanding to support more banks in the coming weeks.
                   </p>
                 </div>
+                )}
+                {/* Connect banks buttons - hidden */}
+                {false && (
+                <div style={{ margin: '1.5rem 0 1rem 0', display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
+                  <button
+                    quiltt-button={import.meta.env.VITE_QUILTT_CONNECTOR_ID}
+                    style={{
+                      padding: '0.9rem 1.8rem',
+                      borderRadius: '999px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      background: '#00d9ff',
+                      color: '#020817',
+                      fontWeight: 600,
+                      fontSize: '1rem',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 10px 25px rgba(0, 217, 255, 0.35)',
+                    }}
+                    onClick={() => {
+                      trackButtonClick('Quiltt Connect Banks', { location: 'analysis_page' });
+                    }}
+                  >
+                    <span>🏦 Connect your banks (beta)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      trackButtonClick('Quiltt Import Transactions', { location: 'analysis_page' });
+                      importQuilttTransactions();
+                    }}
+                    disabled={isQuilttLoading}
+                    style={{
+                      padding: '0.6rem 1.4rem',
+                      borderRadius: '999px',
+                      border: '1px solid rgba(148, 163, 184, 0.6)',
+                      background: 'transparent',
+                      color: '#e5e7eb',
+                      fontSize: '0.9rem',
+                      cursor: isQuilttLoading ? 'wait' : 'pointer',
+                    }}
+                  >
+                    {isQuilttLoading ? 'Importing transactions…' : 'Import transactions from connected banks'}
+                  </button>
+                </div>
+                )}
                 <div className={"upload-area" + (dragActive ? " drag-active" : "")}
                      onClick={handleClick}
                      onDragEnter={handleDrag}
@@ -2859,7 +3308,14 @@ const App: React.FC = () => {
                                         target="_blank" 
                                         rel="noopener noreferrer"
                                         className="optimize-btn"
-                                        style={{ padding: '0.5rem 1rem', textDecoration: 'none', display: 'inline-block' }}
+                                        style={{ 
+                                          padding: '0.5rem 1rem', 
+                                          textDecoration: 'none', 
+                                          display: 'inline-block',
+                                          background: 'linear-gradient(135deg, #10b981, #059669)',
+                                          color: 'white',
+                                          border: 'none'
+                                        }}
                                         onClick={() => trackButtonClick('Switch Subscription', { location: 'actions_page', row_number: rowNumber, amount: totalAmount, subscription: sub.description, category: category })}
                                       >
                                         Switch
@@ -3223,6 +3679,166 @@ const App: React.FC = () => {
                   </>
                 ) : (
                   <p style={{ marginTop: '2rem', color: '#888' }}>No data loaded. Please upload a CSV file.</p>
+                )}
+              </div>
+            )}
+            {activeTab === 'My files' && (
+              <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem 0', width: '100%' }}>
+                <h1 style={{ fontSize: '2.5rem', fontWeight: 700, marginBottom: '1rem', color: 'white' }}>
+                  My Files
+                </h1>
+                <p style={{ marginBottom: '2rem', color: '#bfc9da', fontSize: '1.05rem' }}>
+                  Manage your uploaded CSV files. Removing a file will delete all associated transactions and subscriptions.
+                </p>
+
+                {uploadedFiles.length === 0 ? (
+                  <div style={{ 
+                    textAlign: 'center', 
+                    padding: '3rem', 
+                    color: '#bfc9da',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(255, 255, 255, 0.1)'
+                  }}>
+                    <p style={{ fontSize: '1.1rem' }}>No files uploaded yet.</p>
+                    <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', opacity: 0.8 }}>
+                      Upload CSV files from the Analysis tab to get started.
+                    </p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {uploadedFiles.map((fileInfo, index) => {
+                      const fileName = fileInfo.file?.name || 'Unknown file';
+                      // Try to get timestamp from createdAt field or use current date as fallback
+                      let uploadDate = 'Unknown date';
+                      if (fileInfo.createdAt) {
+                        try {
+                          uploadDate = new Date(fileInfo.createdAt).toLocaleString();
+                        } catch (e) {
+                          console.warn('Failed to parse date:', fileInfo.createdAt);
+                        }
+                      } else if (fileInfo.file?.lastModified) {
+                        // Fallback to file's lastModified if createdAt is not available
+                        uploadDate = new Date(fileInfo.file.lastModified).toLocaleString();
+                      }
+                      
+                      const handleDelete = async () => {
+                        if (!profile?.email) {
+                          alert('You must be logged in to delete files.');
+                          return;
+                        }
+
+                        if (!confirm(`Are you sure you want to delete "${fileName}"?\n\nThis will permanently delete:\n- The file record\n- All ${fileInfo.rowCount} transactions from this file\n- All subscriptions calculated from these transactions\n\nThis action cannot be undone.`)) {
+                          return;
+                        }
+
+                        try {
+                          // Delete from database
+                          const success = await deleteFileAndAssociatedData(profile.email, fileInfo.account);
+                          
+                          if (success) {
+                            // Remove transactions with this account from local state
+                            const updatedCsvData = csvData.filter(tx => tx.Account !== fileInfo.account);
+                            const updatedFiles = uploadedFiles.filter((_, i) => i !== index);
+                            
+                            // Update local state
+                            setCsvData(updatedCsvData);
+                            setUploadedFiles(updatedFiles);
+                            
+                            // Recalculate subscriptions from remaining transactions
+                            const recalculatedSubscriptions = analyzeBankStatement(updatedCsvData);
+                            setSubscriptions(recalculatedSubscriptions);
+                            
+                            // Save updated state
+                            await saveUserData(profile.email, {
+                              csvData: updatedCsvData,
+                              subscriptions: recalculatedSubscriptions,
+                              uploadedFiles: updatedFiles
+                            });
+                            
+                            alert(`File "${fileName}" and all associated data have been deleted.`);
+                          } else {
+                            alert('Failed to delete file. Please try again.');
+                          }
+                        } catch (error) {
+                          console.error('Error deleting file:', error);
+                          alert('An error occurred while deleting the file. Please try again.');
+                        }
+                      };
+
+                      return (
+                        <div
+                          key={`${fileInfo.account}-${index}`}
+                          style={{
+                            background: 'rgba(255, 255, 255, 0.05)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '12px',
+                            padding: '1.5rem',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            gap: '1rem'
+                          }}
+                        >
+                          <div style={{ flex: 1 }}>
+                            <div style={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: '0.75rem',
+                              marginBottom: '0.5rem'
+                            }}>
+                              <span style={{ fontSize: '1.5rem' }}>📄</span>
+                              <h3 style={{ 
+                                fontSize: '1.2rem', 
+                                fontWeight: 600, 
+                                color: 'white',
+                                margin: 0
+                              }}>
+                                {fileName}
+                              </h3>
+                            </div>
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '1.5rem', 
+                              flexWrap: 'wrap',
+                              color: '#bfc9da',
+                              fontSize: '0.9rem'
+                            }}>
+                              <span><strong>Bank:</strong> {fileInfo.bankType}</span>
+                              <span><strong>Account:</strong> {fileInfo.account}</span>
+                              <span><strong>Rows:</strong> {fileInfo.rowCount.toLocaleString()}</span>
+                              <span><strong>Uploaded:</strong> {uploadDate}</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={handleDelete}
+                            style={{
+                              background: '#dc3545',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '8px',
+                              padding: '0.75rem 1.5rem',
+                              fontSize: '0.95rem',
+                              fontWeight: 600,
+                              cursor: 'pointer',
+                              transition: 'all 0.2s',
+                              whiteSpace: 'nowrap'
+                            }}
+                            onMouseOver={(e) => {
+                              e.currentTarget.style.background = '#c82333';
+                              e.currentTarget.style.transform = 'scale(1.05)';
+                            }}
+                            onMouseOut={(e) => {
+                              e.currentTarget.style.background = '#dc3545';
+                              e.currentTarget.style.transform = 'scale(1)';
+                            }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             )}
@@ -3848,7 +4464,10 @@ const App: React.FC = () => {
               zIndex: 10000,
               padding: '1rem'
             }}
-            onClick={() => setShowWaitlistModal(false)}
+            onClick={() => {
+              setShowWaitlistModal(false);
+              localStorage.setItem('broc-waitlist-modal-interacted', 'true');
+            }}
           >
             <div 
               style={{
@@ -3866,7 +4485,10 @@ const App: React.FC = () => {
             >
               {/* Close button */}
               <button
-                onClick={() => setShowWaitlistModal(false)}
+                onClick={() => {
+              setShowWaitlistModal(false);
+              localStorage.setItem('broc-waitlist-modal-interacted', 'true');
+            }}
                 style={{
                   position: 'absolute',
                   top: '1rem',
@@ -3974,6 +4596,7 @@ const App: React.FC = () => {
                             console.log('Email already on waitlist');
                           }
                           setShowWaitlistModal(false);
+                          localStorage.setItem('broc-waitlist-modal-interacted', 'true');
                           setWaitlistEmail('');
                           // Show thank you message
                           setShowThankYou(true);
@@ -4064,6 +4687,7 @@ const App: React.FC = () => {
                   onClick={() => {
                     trackButtonClick('Already Signed Up', { location: 'waitlist_modal' });
                     setShowWaitlistModal(false);
+                    localStorage.setItem('broc-waitlist-modal-interacted', 'true');
                     setWaitlistEmail('');
                   }}
                   style={{

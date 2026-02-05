@@ -496,6 +496,35 @@ input[type="file"]:hover {
   gap: 1.5rem;
 }
 
+.user-profile {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #bfc9da;
+}
+
+.user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid #2d8cff;
+  object-fit: cover;
+}
+
+.user-name {
+  color: #bfc9da;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.welcome-message {
+  color: #bfc9da;
+  font-size: 0.75rem;
+  font-weight: 400;
+  opacity: 0.8;
+}
+
 .topbar-search {
   background: #1a2230;
   border: none;
