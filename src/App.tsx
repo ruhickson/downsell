@@ -815,6 +815,9 @@ const App: React.FC = () => {
                   }));
                   setUploadedFiles(restoredFiles);
                 }
+                // We just restored data from storage; skip the first auto-save
+                // to avoid re-inserting the same transactions/subscriptions.
+                skipNextAutoSaveRef.current = true;
               } else {
                 console.log('📭 No saved data found for user:', profileData.email);
               }
@@ -848,6 +851,8 @@ const App: React.FC = () => {
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Flag to prevent auto-save during data loading
   const isLoadingDataRef = useRef<boolean>(false);
+  // Flag to skip the first auto-save after restoring data on login
+  const skipNextAutoSaveRef = useRef<boolean>(false);
   
   // Save user data whenever csvData, subscriptions, or uploadedFiles change (debounced)
   // Only save if a profile with an email is available (works for Google SSO and future email sign-in)
@@ -872,6 +877,14 @@ const App: React.FC = () => {
     
     // Only save if there's actual data to save
     if (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0) {
+      // If we just restored data from Supabase/localStorage, skip this first auto-save
+      // to avoid re-inserting the same transactions/subscriptions.
+      if (skipNextAutoSaveRef.current) {
+        console.log('⏸️ [App] Skipping first auto-save after restoring user data');
+        skipNextAutoSaveRef.current = false;
+        return;
+      }
+
       // Clear any pending save timeout
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
