@@ -20,7 +20,6 @@ import './App.css';
 import jsPDF from 'jspdf';
 import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trackTabNavigation } from './analytics';
 import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
-import { enhanceCategoriesWithLLM } from './categoryEnhancer';
 import SankeyDiagram from './SankeyDiagram';
 import { saveUserData, loadUserData, deleteFileAndAssociatedData, clearUserData } from './userDataService';
 
