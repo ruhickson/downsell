@@ -879,16 +879,20 @@ const App: React.FC = () => {
       
       // Debounce saves to avoid multiple rapid saves
       saveTimeoutRef.current = setTimeout(() => {
-        console.log('💾 Auto-saving user data...', {
+        console.log('💾 Auto-saving user data (transactions + subscriptions only)...', {
           email: profile.email,
           csvDataCount: csvData.length,
           subscriptionsCount: subscriptions.length,
           uploadedFilesCount: uploadedFiles.length
         });
+        // IMPORTANT:
+        // - We only auto-save csvData + subscriptions.
+        // - Uploaded file metadata is saved explicitly when a new CSV is uploaded.
+        //   This prevents duplicate file records on each login/logout cycle.
         saveUserData(profile.email, {
           csvData,
           subscriptions,
-          uploadedFiles
+          uploadedFiles: []
         });
       }, 1000); // Wait 1 second after last change
     }
