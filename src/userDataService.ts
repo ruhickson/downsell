@@ -164,23 +164,10 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
   });
 
   try {
-    // Delete existing data for this user first (to replace, not append)
-    console.log('🗑️ [UserDataService] Deleting existing data for user:', email);
-    const deleteResults = await Promise.all([
-      supabase.from('user_transactions').delete().eq('user_email', email),
-      supabase.from('user_subscriptions').delete().eq('user_email', email),
-      supabase.from('user_uploaded_files').delete().eq('user_email', email)
-    ]);
-    
-    // Check for delete errors
-    deleteResults.forEach((result, index) => {
-      const tableNames = ['user_transactions', 'user_subscriptions', 'user_uploaded_files'];
-      if (result.error) {
-        console.error(`❌ [UserDataService] Error deleting ${tableNames[index]}:`, result.error);
-      } else {
-        console.log(`✅ [UserDataService] Deleted existing ${tableNames[index]}`);
-      }
-    });
+    // NOTE: We no longer delete all existing data for this user on auto-save.
+    // This avoids accidental data loss if an insert fails after a successful delete.
+    // Instead, we append new records. Explicit destructive actions are handled by
+    // clearUserData (delete my account) and deleteFileAndAssociatedData (remove file).
 
     // Insert transactions (with encryption of sensitive fields)
     if (data.csvData.length > 0) {

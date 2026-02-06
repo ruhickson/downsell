@@ -1,17 +1,8 @@
 // Category cache management - stores transaction name to category mappings
 // Uses Supabase for persistent storage, with localStorage as fallback
 
-import { createClient } from '@supabase/supabase-js';
-
 const CACHE_KEY = 'downsell_category_cache';
 const CACHE_VERSION = 1;
-
-// Get Supabase client (if configured)
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-const supabase = supabaseUrl && supabaseAnonKey 
-  ? createClient(supabaseUrl, supabaseAnonKey)
-  : null;
 
 // LocalStorage cache structure
 type LocalCache = {
@@ -20,31 +11,14 @@ type LocalCache = {
 };
 
 /**
- * Get category from cache (Supabase first, then localStorage)
+ * Get category from cache.
+ * For performance and reliability, we now use localStorage-only.
+ * Supabase-based caching has been disabled to avoid slow/blocking lookups.
  */
 export async function getCachedCategory(transactionName: string): Promise<string | null> {
   const normalizedName = transactionName.trim().toUpperCase();
   
-  // Try Supabase first
-  if (supabase) {
-    try {
-      const { data, error } = await supabase
-        .from('category_transaction')
-        .select('category')
-        .eq('transaction_name', normalizedName)
-        .single();
-      
-      if (!error && data) {
-        // Also cache in localStorage for offline use
-        cacheInLocalStorage(normalizedName, data.category);
-        return data.category;
-      }
-    } catch (err) {
-      console.warn('Supabase lookup failed, falling back to localStorage:', err);
-    }
-  }
-  
-  // Fallback to localStorage
+  // LocalStorage lookup only
   try {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
@@ -66,38 +40,11 @@ export async function getCachedCategory(transactionName: string): Promise<string
 }
 
 /**
- * Store category in cache (Supabase first, then localStorage)
+ * Store category in cache (localStorage-only).
+ * Supabase writes have been disabled to avoid slow/blocking calls.
  */
 export async function cacheCategory(transactionName: string, category: string): Promise<void> {
   const normalizedName = transactionName.trim().toUpperCase();
-  
-  // Try Supabase first
-  if (supabase) {
-    try {
-      const { error } = await supabase
-        .from('category_transaction')
-        .upsert({
-          transaction_name: normalizedName,
-          category: category,
-          usage_count: 1,
-        }, {
-          onConflict: 'transaction_name',
-          ignoreDuplicates: false,
-        });
-      
-      if (!error) {
-        // Also cache in localStorage
-        cacheInLocalStorage(normalizedName, category);
-        return;
-      } else {
-        console.warn('Supabase cache write failed, using localStorage only:', error);
-      }
-    } catch (err) {
-      console.warn('Supabase cache write error, using localStorage only:', err);
-    }
-  }
-  
-  // Fallback to localStorage
   cacheInLocalStorage(normalizedName, category);
 }
 

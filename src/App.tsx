@@ -841,7 +841,7 @@ const App: React.FC = () => {
   const isLoadingDataRef = useRef<boolean>(false);
   
   // Save user data whenever csvData, subscriptions, or uploadedFiles change (debounced)
-  // Only save if user is logged in and there's actual data
+  // Only save if a profile with an email is available (works for Google SSO and future email sign-in)
   useEffect(() => {
     // Skip saving if we're currently loading data
     if (isLoadingDataRef.current) {
@@ -849,26 +849,15 @@ const App: React.FC = () => {
       return;
     }
     
-    // Skip saving if user is not set
-    if (!user) {
+    // Skip saving if profile/email is not set (user not authenticated)
+    if (!profile?.email) {
       if (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0) {
-        console.log('⚠️ Data exists but user not logged in - skipping save', {
+        console.log('⚠️ Data exists but no authenticated profile/email - skipping save', {
           hasProfile: !!profile?.email,
-          hasUser: !!user,
           csvDataCount: csvData.length,
           subscriptionsCount: subscriptions.length
         });
       }
-      return;
-    }
-    
-    // If user is set but profile is not yet loaded, wait for profile
-    if (!profile?.email) {
-      console.log('⏳ User logged in but profile not yet loaded, will save when profile is available...', {
-        hasUser: !!user,
-        csvDataCount: csvData.length,
-        subscriptionsCount: subscriptions.length
-      });
       return;
     }
     
