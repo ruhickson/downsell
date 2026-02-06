@@ -227,26 +227,67 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
       
       console.log('✅ [UserDataService] All transactions encrypted, count:', transactionsToInsert.length, '(failed:', failedTransactions.length, ')');
 
-      // Insert in batches of 1000 to avoid payload size limits
-      const batchSize = 1000;
-      let totalInserted = 0;
-      for (let i = 0; i < transactionsToInsert.length; i += batchSize) {
-        const batch = transactionsToInsert.slice(i, i + batchSize);
-        console.log(`💾 [UserDataService] Inserting batch ${Math.floor(i/batchSize) + 1} (${batch.length} transactions)...`);
-        const { data: insertedData, error } = await supabase.from('user_transactions').insert(batch).select();
-        if (error) {
-          console.error('❌ [UserDataService] Error inserting transactions:', error);
-          console.error('Error details:', JSON.stringify(error, null, 2));
-          return false;
+      // Check for existing transactions to avoid duplicates
+      // We'll check based on a key of (encrypted description, amount, date, account, bank_source)
+      // Note: We can't easily decrypt existing transactions to compare, so we'll check by loading
+      // existing transactions and comparing the encrypted descriptions
+      const { data: existingTransactions, error: existingError } = await supabase
+        .from('user_transactions')
+        .select('description, amount, date, account, bank_source')
+        .eq('user_email', email);
+
+      if (existingError) {
+        console.warn('⚠️ [UserDataService] Could not load existing transactions for duplicate check:', existingError);
+      }
+
+      // Build a set of existing transaction keys (using encrypted description + other fields)
+      const existingKeys = new Set(
+        (existingTransactions || []).map((tx: any) => {
+          // Use encrypted description + amount + date + account + bank_source as key
+          return `${tx.description}::${tx.amount}::${tx.date}::${tx.account}::${tx.bank_source}`;
+        })
+      );
+
+      // Filter out transactions that already exist
+      const newTransactions = transactionsToInsert.filter(tx => {
+        const key = `${tx.description}::${tx.amount}::${tx.date}::${tx.account}::${tx.bank_source}`;
+        const isDuplicate = existingKeys.has(key);
+        if (isDuplicate) {
+          console.log('⏭️ [UserDataService] Skipping duplicate transaction (already in Supabase):', {
+            amount: tx.amount,
+            date: tx.date,
+            account: tx.account
+          });
         }
-        totalInserted += insertedData?.length || 0;
-        console.log(`✅ [UserDataService] Batch ${Math.floor(i/batchSize) + 1} inserted:`, insertedData?.length || 0, 'records');
+        return !isDuplicate;
+      });
+
+      if (newTransactions.length === 0) {
+        console.log('📝 [UserDataService] No new transactions to insert (all are already in Supabase)');
+      } else {
+        console.log(`📝 [UserDataService] Filtered ${transactionsToInsert.length - newTransactions.length} duplicate transactions, ${newTransactions.length} new to insert`);
+
+        // Insert in batches of 1000 to avoid payload size limits
+        const batchSize = 1000;
+        let totalInserted = 0;
+        for (let i = 0; i < newTransactions.length; i += batchSize) {
+          const batch = newTransactions.slice(i, i + batchSize);
+          console.log(`💾 [UserDataService] Inserting batch ${Math.floor(i/batchSize) + 1} (${batch.length} transactions)...`);
+          const { data: insertedData, error } = await supabase.from('user_transactions').insert(batch).select();
+          if (error) {
+            console.error('❌ [UserDataService] Error inserting transactions:', error);
+            console.error('Error details:', JSON.stringify(error, null, 2));
+            return false;
+          }
+          totalInserted += insertedData?.length || 0;
+          console.log(`✅ [UserDataService] Batch ${Math.floor(i/batchSize) + 1} inserted:`, insertedData?.length || 0, 'records');
+        }
+        console.log('✅ [UserDataService] Transactions saved. Total inserted:', totalInserted, 'records (expected:', newTransactions.length, ', original:', data.csvData.length, ')');
+        if (totalInserted !== newTransactions.length) {
+          console.warn('⚠️ [UserDataService] Mismatch: Expected to insert', newTransactions.length, 'transactions but inserted', totalInserted);
+        }
+        }
       }
-      console.log('✅ [UserDataService] Transactions saved. Total inserted:', totalInserted, 'records (expected:', data.csvData.length, ')');
-      if (totalInserted !== data.csvData.length) {
-        console.warn('⚠️ [UserDataService] Mismatch: Expected to insert', data.csvData.length, 'transactions but inserted', totalInserted);
-      }
-    }
 
     // Insert subscriptions (with encryption of sensitive fields)
     if (data.subscriptions.length > 0) {
