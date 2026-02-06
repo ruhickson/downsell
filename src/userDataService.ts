@@ -173,37 +173,65 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
     if (data.csvData.length > 0) {
       console.log('📝 [UserDataService] Preparing to save transactions:', data.csvData.length);
       console.log('🔐 [UserDataService] Encrypting transaction data...');
-      const transactions = await Promise.all(
+      const transactions = await Promise.allSettled(
         data.csvData.map(async (tx) => {
-          // Encrypt sensitive fields
-          const encryptedDescription = await encryptData(tx.Description, email);
-          const encryptedOriginalData = tx.OriginalData 
-            ? await encryptData(tx.OriginalData, email)
-            : null;
+          try {
+            // Encrypt sensitive fields
+            const encryptedDescription = await encryptData(tx.Description, email);
+            const encryptedOriginalData = tx.OriginalData 
+              ? await encryptData(tx.OriginalData, email)
+              : null;
 
-          return {
-            user_email: email,
-            description: encryptedDescription, // Encrypted
-            amount: tx.Amount,
-            type: tx.Type,
-            date: tx.Date,
-            currency: tx.Currency,
-            balance: tx.Balance || null,
-            bank_source: tx.BankSource,
-            account: tx.Account,
-            category: tx.Category || null,
-            original_data: encryptedOriginalData // Encrypted
-          };
+            return {
+              user_email: email,
+              description: encryptedDescription, // Encrypted
+              amount: tx.Amount,
+              type: tx.Type,
+              date: tx.Date,
+              currency: tx.Currency,
+              balance: tx.Balance || null,
+              bank_source: tx.BankSource,
+              account: tx.Account,
+              category: tx.Category || null,
+              original_data: encryptedOriginalData // Encrypted
+            };
+          } catch (error) {
+            console.error('❌ [UserDataService] Failed to encrypt transaction:', {
+              Description: tx.Description,
+              Date: tx.Date,
+              Account: tx.Account,
+              error: error
+            });
+            throw error; // Re-throw to mark as rejected
+          }
         })
       );
       
-      console.log('✅ [UserDataService] All transactions encrypted, count:', transactions.length);
+      // Filter out failed encryptions and log them
+      const successfulTransactions: any[] = [];
+      const failedTransactions: number[] = [];
+      transactions.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          successfulTransactions.push(result.value);
+        } else {
+          failedTransactions.push(index);
+          console.error('❌ [UserDataService] Transaction encryption failed at index', index, ':', result.reason);
+        }
+      });
+      
+      if (failedTransactions.length > 0) {
+        console.warn('⚠️ [UserDataService]', failedTransactions.length, 'transactions failed encryption and will be skipped:', failedTransactions);
+      }
+      
+      const transactionsToInsert = successfulTransactions;
+      
+      console.log('✅ [UserDataService] All transactions encrypted, count:', transactionsToInsert.length, '(failed:', failedTransactions.length, ')');
 
       // Insert in batches of 1000 to avoid payload size limits
       const batchSize = 1000;
       let totalInserted = 0;
-      for (let i = 0; i < transactions.length; i += batchSize) {
-        const batch = transactions.slice(i, i + batchSize);
+      for (let i = 0; i < transactionsToInsert.length; i += batchSize) {
+        const batch = transactionsToInsert.slice(i, i + batchSize);
         console.log(`💾 [UserDataService] Inserting batch ${Math.floor(i/batchSize) + 1} (${batch.length} transactions)...`);
         const { data: insertedData, error } = await supabase.from('user_transactions').insert(batch).select();
         if (error) {
