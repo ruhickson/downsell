@@ -711,12 +711,20 @@ export async function deleteFileAndAssociatedData(email: string, account: string
         return false;
       }
 
-      // Note: Subscriptions are derived from transactions, so they will be recalculated
-      // when the app reloads data. We don't need to delete them explicitly here.
-      // However, we can delete subscriptions that might have been calculated from this account's transactions.
-      // For now, we'll let them be recalculated on next load.
+      // Subscriptions are derived from all transactions. To avoid stale subscriptions
+      // from deleted files, we clear all subscriptions for this user and let the app
+      // re-save the recalculated set based on the remaining transactions.
+      const { error: subError } = await supabase
+        .from('user_subscriptions')
+        .delete()
+        .eq('user_email', email);
 
-      console.log('✅ [UserDataService] File and associated data deleted for account:', account);
+      if (subError) {
+        console.error('❌ [UserDataService] Error deleting subscriptions for user:', subError);
+        return false;
+      }
+
+      console.log('✅ [UserDataService] File, transactions, and subscriptions deleted for account:', account);
       return true;
     }
 
