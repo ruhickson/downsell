@@ -847,12 +847,33 @@ const App: React.FC = () => {
     }
   }, [user]);
 
+  // When switching between different logged-in users, reset in-memory data
+  // so one user's transactions/subscriptions/files never "bleed" into another's
+  useEffect(() => {
+    const currentEmail = profile?.email || null;
+    const previousEmail = previousEmailRef.current;
+
+    if (currentEmail && previousEmail && currentEmail !== previousEmail) {
+      console.log('🔄 [App] Detected user switch from', previousEmail, 'to', currentEmail, '- resetting local state');
+      // Clear in-memory data; each user will load their own data via loadUserData
+      setCsvData([]);
+      setSubscriptions([]);
+      setUploadedFiles([]);
+      // Ensure we don't auto-save this cleared state
+      skipNextAutoSaveRef.current = true;
+    }
+
+    previousEmailRef.current = currentEmail;
+  }, [profile?.email]);
+
   // Debounce timer for auto-save
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   // Flag to prevent auto-save during data loading
   const isLoadingDataRef = useRef<boolean>(false);
   // Flag to skip the first auto-save after restoring data on login
   const skipNextAutoSaveRef = useRef<boolean>(false);
+  // Track previous profile email so we can reset state when switching users
+  const previousEmailRef = useRef<string | null>(null);
   
   // Save user data whenever csvData, subscriptions, or uploadedFiles change (debounced)
   // Only save if a profile with an email is available (works for Google SSO and future email sign-in)
