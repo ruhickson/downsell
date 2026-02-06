@@ -119,21 +119,73 @@ function loadUserDataFromLocalStorage(email: string): UserData | null {
 }
 
 // Supabase functions
+let saveInProgress = false;
+
 async function saveUserDataToSupabase(email: string, data: UserData): Promise<boolean> {
   if (!supabase || !email) {
+    console.log('⚠️ [UserDataService] Cannot save to Supabase:', {
+      hasSupabase: !!supabase,
+      hasEmail: !!email
+    });
     return false;
   }
 
+  // CRITICAL SAFEGUARD: Never save empty data - this would delete everything in the database!
+  // Only save if there's actual data to save
+  if (data.csvData.length === 0 && data.subscriptions.length === 0 && data.uploadedFiles.length === 0) {
+    console.log('⚠️ [UserDataService] Skipping save - no data to save (preventing database clear)', {
+      csvDataCount: data.csvData.length,
+      subscriptionsCount: data.subscriptions.length,
+      uploadedFilesCount: data.uploadedFiles.length
+    });
+    return false;
+  }
+
+  // Prevent concurrent saves - if a save is in progress, skip this one
+  if (saveInProgress) {
+    console.log('⏳ [UserDataService] Save already in progress, skipping duplicate save');
+    return false;
+  }
+
+  saveInProgress = true;
+  
+  // Safety timeout: reset flag after 30 seconds in case save gets stuck
+  const timeoutId = setTimeout(() => {
+    if (saveInProgress) {
+      console.warn('⚠️ [UserDataService] Save operation timed out, resetting lock');
+      saveInProgress = false;
+    }
+  }, 30000);
+
+  console.log('💾 [UserDataService] Starting save to Supabase for', email, {
+    csvDataCount: data.csvData.length,
+    subscriptionsCount: data.subscriptions.length,
+    uploadedFilesCount: data.uploadedFiles.length
+  });
+
   try {
     // Delete existing data for this user first (to replace, not append)
-    await Promise.all([
+    console.log('🗑️ [UserDataService] Deleting existing data for user:', email);
+    const deleteResults = await Promise.all([
       supabase.from('user_transactions').delete().eq('user_email', email),
       supabase.from('user_subscriptions').delete().eq('user_email', email),
       supabase.from('user_uploaded_files').delete().eq('user_email', email)
     ]);
+    
+    // Check for delete errors
+    deleteResults.forEach((result, index) => {
+      const tableNames = ['user_transactions', 'user_subscriptions', 'user_uploaded_files'];
+      if (result.error) {
+        console.error(`❌ [UserDataService] Error deleting ${tableNames[index]}:`, result.error);
+      } else {
+        console.log(`✅ [UserDataService] Deleted existing ${tableNames[index]}`);
+      }
+    });
 
     // Insert transactions (with encryption of sensitive fields)
     if (data.csvData.length > 0) {
+      console.log('📝 [UserDataService] Preparing to save transactions:', data.csvData.length);
+      console.log('🔐 [UserDataService] Encrypting transaction data...');
       const transactions = await Promise.all(
         data.csvData.map(async (tx) => {
           // Encrypt sensitive fields
@@ -157,21 +209,30 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
           };
         })
       );
+      
+      console.log('✅ [UserDataService] All transactions encrypted, count:', transactions.length);
 
       // Insert in batches of 1000 to avoid payload size limits
       const batchSize = 1000;
+      let totalInserted = 0;
       for (let i = 0; i < transactions.length; i += batchSize) {
         const batch = transactions.slice(i, i + batchSize);
-        const { error } = await supabase.from('user_transactions').insert(batch);
+        console.log(`💾 [UserDataService] Inserting batch ${Math.floor(i/batchSize) + 1} (${batch.length} transactions)...`);
+        const { data: insertedData, error } = await supabase.from('user_transactions').insert(batch).select();
         if (error) {
           console.error('❌ [UserDataService] Error inserting transactions:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
           return false;
         }
+        totalInserted += insertedData?.length || 0;
+        console.log(`✅ [UserDataService] Batch ${Math.floor(i/batchSize) + 1} inserted:`, insertedData?.length || 0, 'records');
       }
+      console.log('✅ [UserDataService] Transactions saved. Total inserted:', totalInserted, 'records');
     }
 
     // Insert subscriptions (with encryption of sensitive fields)
     if (data.subscriptions.length > 0) {
+      console.log('📊 [UserDataService] Preparing to save subscriptions:', data.subscriptions.length);
       const subscriptions = await Promise.all(
         data.subscriptions.map(async (sub) => {
           // Encrypt sensitive fields
@@ -195,15 +256,30 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
         })
       );
 
-      const { error } = await supabase.from('user_subscriptions').insert(subscriptions);
+      console.log('💾 [UserDataService] Inserting', subscriptions.length, 'subscriptions');
+      const { data: insertedData, error } = await supabase.from('user_subscriptions').insert(subscriptions).select();
       if (error) {
         console.error('❌ [UserDataService] Error inserting subscriptions:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
         return false;
       }
+      console.log('✅ [UserDataService] Subscriptions saved successfully. Inserted:', insertedData?.length || 0, 'records');
     }
 
     // Insert uploaded files (no encryption needed)
     if (data.uploadedFiles.length > 0) {
+      console.log('📁 [UserDataService] Preparing to save uploaded files:', data.uploadedFiles.length);
+      console.log('📁 [UserDataService] Raw uploadedFiles data:', JSON.stringify(data.uploadedFiles.map(f => ({
+        bankType: f.bankType,
+        rowCount: f.rowCount,
+        account: f.account,
+        hasFile: !!f.file,
+        fileName: f.file?.name || f.fileName,
+        fileSize: f.file?.size || f.fileSize,
+        fileType: f.file?.type || f.fileType,
+        lastModified: f.file?.lastModified || f.lastModified
+      })), null, 2));
+      
       const uploadedFiles = data.uploadedFiles.map(file => ({
         user_email: email,
         bank_type: file.bankType,
@@ -215,11 +291,26 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
         last_modified: file.file?.lastModified || file.lastModified || null
       }));
 
-      const { error } = await supabase.from('user_uploaded_files').insert(uploadedFiles);
+      console.log('📁 [UserDataService] Mapped file data:', JSON.stringify(uploadedFiles[0], null, 2));
+      console.log('💾 [UserDataService] Inserting', uploadedFiles.length, 'uploaded files');
+      const { data: insertedData, error } = await supabase.from('user_uploaded_files').insert(uploadedFiles).select();
       if (error) {
         console.error('❌ [UserDataService] Error inserting uploaded files:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        console.error('Error code:', error.code, 'Error message:', error.message);
+        if (error.code === 'PGRST301' || error.message?.includes('permission denied') || error.message?.includes('RLS')) {
+          console.error('🚨 [UserDataService] RLS POLICY BLOCKING INSERT! Check RLS policies in Supabase.');
+        }
         return false;
       }
+      console.log('✅ [UserDataService] Uploaded files saved successfully. Inserted:', insertedData?.length || 0, 'records');
+      if (insertedData && insertedData.length > 0) {
+        console.log('✅ [UserDataService] Verified: Files exist in database:', insertedData.map(f => f.id));
+      } else {
+        console.error('❌ [UserDataService] WARNING: Insert returned success but no data!');
+      }
+    } else {
+      console.log('⚠️ [UserDataService] No uploaded files to save (array is empty)');
     }
 
     console.log('✅ [UserDataService] User data saved to Supabase for', email, {
@@ -227,9 +318,18 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
       subscriptionsCount: data.subscriptions.length,
       uploadedFilesCount: data.uploadedFiles.length
     });
+    clearTimeout(timeoutId);
+    saveInProgress = false;
     return true;
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ [UserDataService] Failed to save user data to Supabase:', error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      email: email
+    });
+    clearTimeout(timeoutId);
+    saveInProgress = false;
     return false;
   }
 }
@@ -377,6 +477,23 @@ export async function saveUserData(email: string, data: UserData): Promise<void>
     return;
   }
 
+  // Check if Supabase is configured
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  console.log('🔍 [UserDataService] Checking Supabase configuration:', {
+    hasUrl: !!supabaseUrl,
+    hasKey: !!supabaseAnonKey,
+    urlLength: supabaseUrl?.length || 0,
+    keyLength: supabaseAnonKey?.length || 0
+  });
+  
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.warn('⚠️ [UserDataService] Supabase not configured (missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY), saving to localStorage only');
+    saveUserDataToLocalStorage(email, data);
+    return;
+  }
+
   // Try Supabase first, fall back to localStorage
   const supabaseSuccess = await saveUserDataToSupabase(email, data);
   
@@ -386,7 +503,7 @@ export async function saveUserData(email: string, data: UserData): Promise<void>
   if (supabaseSuccess) {
     console.log('✅ [UserDataService] Data saved to Supabase and localStorage');
   } else {
-    console.log('⚠️ [UserDataService] Data saved to localStorage only (Supabase not configured or failed)');
+    console.log('⚠️ [UserDataService] Data saved to localStorage only (Supabase save failed)');
   }
 }
 

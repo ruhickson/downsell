@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Papa from 'papaparse';
 import { Bar, Pie, Line } from 'react-chartjs-2';
 import {
@@ -22,7 +22,6 @@ import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trac
 import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
 import { enhanceCategoriesWithLLM } from './categoryEnhancer';
 import SankeyDiagram from './SankeyDiagram';
-import { fetchQuilttConnectedBanks, fetchQuilttTransactions, type QuilttConnectedBank, type QuilttTransaction } from './quilttIntegration';
 import { saveUserData, loadUserData, deleteFileAndAssociatedData } from './userDataService';
 
 ChartJS.register(
@@ -687,8 +686,7 @@ const App: React.FC = () => {
   const [dragActive, setDragActive] = useState(false);
   const [_isMobile, setIsMobile] = useState(false);
   const [supportedBanksCollapsed, setSupportedBanksCollapsed] = useState(false);
-  const [connectedBanks, setConnectedBanks] = useState<QuilttConnectedBank[]>([]);
-  const [isQuilttLoading, setIsQuilttLoading] = useState(false);
+  const [isLoadingUserData, setIsLoadingUserData] = useState(false);
   const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string; createdAt?: string }>>([]);
   const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Monzo: number }>({
     AIB: 0,
@@ -728,6 +726,23 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // Restore user session on page load
+  useEffect(() => {
+    const savedUser = localStorage.getItem('google-oauth-user');
+    if (savedUser) {
+      try {
+        const userData = JSON.parse(savedUser);
+        if (userData && userData.credential) {
+          console.log('🔄 Restoring user session from localStorage');
+          setUser(userData);
+        }
+      } catch (error) {
+        console.error('Failed to restore user session:', error);
+        localStorage.removeItem('google-oauth-user');
+      }
+    }
+  }, []);
+
   // Fetch user profile when user logs in and load saved data
   useEffect(() => {
     if (user && user.credential) {
@@ -752,47 +767,66 @@ const App: React.FC = () => {
         console.log('✅ Profile loaded:', profileData.email);
         setProfile(profileData);
         
-        // Load saved user data
+        // Save user credential to localStorage for persistence
+        localStorage.setItem('google-oauth-user', JSON.stringify(user));
+        
+        // Load saved user data - use a small delay to ensure profile state is set
         if (profileData.email) {
-          loadUserData(profileData.email).then((savedData) => {
-            if (savedData) {
-              console.log('🔄 Restoring user data:', {
-                csvData: savedData.csvData?.length || 0,
-                subscriptions: savedData.subscriptions?.length || 0,
-                uploadedFiles: savedData.uploadedFiles?.length || 0
-              });
-              setCsvData(savedData.csvData || []);
-              setSubscriptions(savedData.subscriptions || []);
-              // Note: uploadedFiles can't be fully restored (File objects can't be serialized),
-              // but metadata is preserved for display purposes. The actual transaction data
-              // is in csvData, which is what matters.
-              if (savedData.uploadedFiles && savedData.uploadedFiles.length > 0) {
-                // Convert metadata back to a format compatible with the state type
-                // We'll create placeholder File objects or just use the metadata
-                const restoredFiles = savedData.uploadedFiles.map((fileMeta: any) => ({
-                  bankType: fileMeta.bankType,
-                  rowCount: fileMeta.rowCount,
-                  account: fileMeta.account,
-                  createdAt: fileMeta.createdAt, // Include timestamp
-                  // Create a minimal File-like object for compatibility
-                  file: new File([], fileMeta.fileName || 'restored.csv', { 
-                    type: fileMeta.fileType || 'text/csv',
-                    lastModified: fileMeta.lastModified || Date.now()
-                  })
-                }));
-                setUploadedFiles(restoredFiles);
+          // Use setTimeout to ensure profile state is set before loading data
+          // This helps avoid race conditions with the auto-save useEffect
+          setTimeout(() => {
+            console.log('🔄 Loading user data for:', profileData.email);
+            setIsLoadingUserData(true); // Show loading spinner
+            isLoadingDataRef.current = true; // Set flag to prevent auto-save during load
+            loadUserData(profileData.email).then((savedData) => {
+              if (savedData) {
+                console.log('🔄 Restoring user data:', {
+                  csvData: savedData.csvData?.length || 0,
+                  subscriptions: savedData.subscriptions?.length || 0,
+                  uploadedFiles: savedData.uploadedFiles?.length || 0
+                });
+                setCsvData(savedData.csvData || []);
+                setSubscriptions(savedData.subscriptions || []);
+                // Note: uploadedFiles can't be fully restored (File objects can't be serialized),
+                // but metadata is preserved for display purposes. The actual transaction data
+                // is in csvData, which is what matters.
+                if (savedData.uploadedFiles && savedData.uploadedFiles.length > 0) {
+                  // Convert metadata back to a format compatible with the state type
+                  // We'll create placeholder File objects or just use the metadata
+                  const restoredFiles = savedData.uploadedFiles.map((fileMeta: any) => ({
+                    bankType: fileMeta.bankType,
+                    rowCount: fileMeta.rowCount,
+                    account: fileMeta.account,
+                    createdAt: fileMeta.createdAt, // Include timestamp
+                    // Create a minimal File-like object for compatibility
+                    file: new File([], fileMeta.fileName || 'restored.csv', { 
+                      type: fileMeta.fileType || 'text/csv',
+                      lastModified: fileMeta.lastModified || Date.now()
+                    })
+                  }));
+                  setUploadedFiles(restoredFiles);
+                }
+              } else {
+                console.log('📭 No saved data found for user:', profileData.email);
               }
-            } else {
-              console.log('📭 No saved data found for user:', profileData.email);
-            }
-          }).catch((err) => {
-            console.error('Failed to load user data:', err);
-          });
+              // Reset flag after a short delay to allow state updates to complete
+              setTimeout(() => {
+                isLoadingDataRef.current = false;
+                setIsLoadingUserData(false); // Hide loading spinner
+              }, 500);
+            }).catch((err) => {
+              console.error('❌ Failed to load user data:', err);
+              isLoadingDataRef.current = false;
+              setIsLoadingUserData(false); // Hide loading spinner on error
+            });
+          }, 200); // Small delay to ensure state is set
         }
       } catch (err) {
         console.error('Failed to decode JWT:', err);
       }
     } else {
+      // Clear saved session when user logs out
+      localStorage.removeItem('google-oauth-user');
       // Clear data when user logs out
       if (profile?.email) {
         // Optionally clear data on logout, or keep it for next login
@@ -801,9 +835,20 @@ const App: React.FC = () => {
     }
   }, [user]);
 
-  // Save user data whenever csvData, subscriptions, or uploadedFiles change
+  // Debounce timer for auto-save
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Flag to prevent auto-save during data loading
+  const isLoadingDataRef = useRef<boolean>(false);
+  
+  // Save user data whenever csvData, subscriptions, or uploadedFiles change (debounced)
   // Only save if user is logged in and there's actual data
   useEffect(() => {
+    // Skip saving if we're currently loading data
+    if (isLoadingDataRef.current) {
+      console.log('⏸️ [App] Skipping auto-save - data is being loaded');
+      return;
+    }
+    
     // Skip saving if user is not set
     if (!user) {
       if (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0) {
@@ -829,54 +874,35 @@ const App: React.FC = () => {
     
     // Only save if there's actual data to save
     if (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0) {
-      console.log('💾 Auto-saving user data...', {
-        email: profile.email,
-        csvDataCount: csvData.length,
-        subscriptionsCount: subscriptions.length,
-        uploadedFilesCount: uploadedFiles.length
-      });
-      saveUserData(profile.email, {
-        csvData,
-        subscriptions,
-        uploadedFiles
-      });
-    }
-  }, [csvData, subscriptions, uploadedFiles, profile?.email, user]);
-  
-  // Also save when profile becomes available (in case data was set before profile loaded)
-  useEffect(() => {
-    if (profile?.email && user && (csvData.length > 0 || subscriptions.length > 0 || uploadedFiles.length > 0)) {
-      console.log('💾 Profile now available - saving existing data...', {
-        email: profile.email,
-        csvDataCount: csvData.length,
-        subscriptionsCount: subscriptions.length,
-        uploadedFilesCount: uploadedFiles.length
-      });
-      saveUserData(profile.email, {
-        csvData,
-        subscriptions,
-        uploadedFiles
-      });
-    }
-  }, [profile?.email, user, csvData, subscriptions, uploadedFiles]);
-
-  // Load Quiltt-connected banks on mount (placeholder implementation).
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const banks = await fetchQuilttConnectedBanks();
-        if (!cancelled) {
-          setConnectedBanks(banks);
-        }
-      } catch (error) {
-        console.error('[Quiltt] Failed to load connected banks', error);
+      // Clear any pending save timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
-    })();
+      
+      // Debounce saves to avoid multiple rapid saves
+      saveTimeoutRef.current = setTimeout(() => {
+        console.log('💾 Auto-saving user data...', {
+          email: profile.email,
+          csvDataCount: csvData.length,
+          subscriptionsCount: subscriptions.length,
+          uploadedFilesCount: uploadedFiles.length
+        });
+        saveUserData(profile.email, {
+          csvData,
+          subscriptions,
+          uploadedFiles
+        });
+      }, 1000); // Wait 1 second after last change
+    }
+    
+    // Cleanup timeout on unmount or when dependencies change
     return () => {
-      cancelled = true;
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
     };
-  }, []);
+  }, [csvData, subscriptions, uploadedFiles, profile?.email, user]);
+
 
   const handleAcceptCookies = () => {
     localStorage.setItem('cookie-consent', 'accepted');
@@ -912,38 +938,6 @@ const App: React.FC = () => {
     'Daily',
   ];
 
-  const importQuilttTransactions = async () => {
-    try {
-      setIsQuilttLoading(true);
-      const quilttTx: QuilttTransaction[] = await fetchQuilttTransactions();
-      if (!quilttTx || quilttTx.length === 0) {
-        console.log('[Quiltt] No transactions returned to import.');
-        return;
-      }
-
-      setCsvData(prevData => {
-        const mergedData: Transaction[] = [
-          ...prevData,
-          // QuilttTransaction matches Transaction shape
-          ...quilttTx as unknown as Transaction[],
-        ];
-
-        mergedData.sort((a, b) => {
-          const dateA = new Date(a.Date).getTime();
-          const dateB = new Date(b.Date).getTime();
-          return dateB - dateA;
-        });
-
-        setSubscriptions(analyzeBankStatement(mergedData));
-        return mergedData;
-      });
-    } catch (error) {
-      console.error('[Quiltt] Failed to import transactions', error);
-      alert('We could not import transactions from your connected banks. Please try again in a moment.');
-    } finally {
-      setIsQuilttLoading(false);
-    }
-  };
   
   const handleSidebarTabClick = (tab: string) => {
     setActiveTab(tab);
@@ -2057,7 +2051,8 @@ const App: React.FC = () => {
                           uploadedFiles
                         });
                       }
-                      // Clear UI state but keep data in localStorage
+                      // Clear UI state and remove saved session
+                      localStorage.removeItem('google-oauth-user');
                       setUser(null);
                       setProfile(null);
                       setCsvData([]);
@@ -2235,55 +2230,6 @@ const App: React.FC = () => {
                     )}
                   </div>
                 </div>
-                {/* Connected banks section - hidden */}
-                {false && (
-                <div style={{ 
-                  width: '100%',
-                  padding: '1rem 1.5rem', 
-                  background: 'rgba(255, 255, 255, 0.05)', 
-                  border: '1px solid rgba(255, 255, 255, 0.1)', 
-                  borderRadius: '12px', 
-                  marginBottom: '2rem',
-                  color: '#bfc9da',
-                  fontSize: '0.95rem',
-                  lineHeight: '1.6'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <strong style={{ color: 'white' }}>Connected banks (via Quiltt)</strong>
-                    {isQuilttLoading && (
-                      <span style={{ fontSize: '0.8rem', color: '#9ca3af' }}>Refreshing…</span>
-                    )}
-                  </div>
-                  {connectedBanks.length === 0 ? (
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: '#9ca3af' }}>
-                      No banks connected yet. Use the <strong>Connect your banks</strong> button above to link an account.
-                    </p>
-                  ) : (
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-                      {connectedBanks.map(bank => (
-                        <span
-                          key={bank.id}
-                          style={{
-                            padding: '0.35rem 0.7rem',
-                            borderRadius: '999px',
-                            background: bank.status === 'connected' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(248, 113, 113, 0.12)',
-                            border: `1px solid ${bank.status === 'connected' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(248, 113, 113, 0.6)'}`,
-                            fontSize: '0.8rem',
-                            color: '#e5e7eb',
-                          }}
-                        >
-                          {bank.institutionName}
-                          {bank.lastSyncedAt && (
-                            <span style={{ marginLeft: '0.4rem', color: '#9ca3af' }}>
-                              · synced {new Date(bank.lastSyncedAt).toLocaleDateString()}
-                            </span>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                )}
                 {/* Supported banks section - hidden */}
                 {false && (
                 <div style={{ 
@@ -2490,59 +2436,13 @@ const App: React.FC = () => {
                   </p>
                 </div>
                 )}
-                {/* Connect banks buttons - hidden */}
-                {false && (
-                <div style={{ margin: '1.5rem 0 1rem 0', display: 'flex', flexDirection: 'column', gap: '0.75rem', alignItems: 'center' }}>
-                  <button
-                    quiltt-button={import.meta.env.VITE_QUILTT_CONNECTOR_ID}
-                    style={{
-                      padding: '0.9rem 1.8rem',
-                      borderRadius: '999px',
-                      border: 'none',
-                      cursor: 'pointer',
-                      background: '#00d9ff',
-                      color: '#020817',
-                      fontWeight: 600,
-                      fontSize: '1rem',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '0.5rem',
-                      boxShadow: '0 10px 25px rgba(0, 217, 255, 0.35)',
-                    }}
-                    onClick={() => {
-                      trackButtonClick('Quiltt Connect Banks', { location: 'analysis_page' });
-                    }}
-                  >
-                    <span>🏦 Connect your banks (beta)</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      trackButtonClick('Quiltt Import Transactions', { location: 'analysis_page' });
-                      importQuilttTransactions();
-                    }}
-                    disabled={isQuilttLoading}
-                    style={{
-                      padding: '0.6rem 1.4rem',
-                      borderRadius: '999px',
-                      border: '1px solid rgba(148, 163, 184, 0.6)',
-                      background: 'transparent',
-                      color: '#e5e7eb',
-                      fontSize: '0.9rem',
-                      cursor: isQuilttLoading ? 'wait' : 'pointer',
-                    }}
-                  >
-                    {isQuilttLoading ? 'Importing transactions…' : 'Import transactions from connected banks'}
-                  </button>
-                </div>
-                )}
                 <div className={"upload-area" + (dragActive ? " drag-active" : "")}
                      onClick={handleClick}
                      onDragEnter={handleDrag}
                      onDragOver={handleDrag}
                      onDragLeave={handleDrag}
                      onDrop={handleDrop}
-                     style={{ marginBottom: '2rem' }}>
+                     style={{ marginBottom: '2rem', position: 'relative' }}>
                   <input
                     type="file"
                     accept=".csv"
@@ -2551,27 +2451,41 @@ const App: React.FC = () => {
                     style={{ display: 'none' }}
                     onChange={handleFileUpload}
                   />
-                  <div className="upload-prompt">
-                    {uploadedFiles.length > 0 ? (
-                      <div>
-                        <div style={{ marginBottom: '0.5rem' }}>
-                          <strong>{uploadedFiles.length} file{uploadedFiles.length > 1 ? 's' : ''} uploaded</strong>
+                  {isLoadingUserData ? (
+                    <div className="upload-prompt" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', minHeight: '120px' }}>
+                      <div style={{
+                        width: '40px',
+                        height: '40px',
+                        border: '4px solid rgba(255, 255, 255, 0.2)',
+                        borderTop: '4px solid #fff',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }}></div>
+                      <span style={{ fontSize: '0.95rem', opacity: 0.9 }}>Loading your data...</span>
+                    </div>
+                  ) : (
+                    <div className="upload-prompt">
+                      {uploadedFiles.length > 0 ? (
+                        <div>
+                          <div style={{ marginBottom: '0.5rem' }}>
+                            <strong>{uploadedFiles.length} file{uploadedFiles.length > 1 ? 's' : ''} uploaded</strong>
+                          </div>
+                          <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>
+                            {uploadedFiles.map((fileInfo, idx) => (
+                              <div key={idx} style={{ marginTop: '0.3rem' }}>
+                                {fileInfo.file.name} ({fileInfo.bankType}, {fileInfo.rowCount} rows)
+                              </div>
+                            ))}
+                          </div>
+                          <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', opacity: 0.8 }}>
+                            You can upload more files to merge them
+                          </div>
                         </div>
-                        <div style={{ fontSize: '0.9rem', opacity: 0.9 }}>
-                          {uploadedFiles.map((fileInfo, idx) => (
-                            <div key={idx} style={{ marginTop: '0.3rem' }}>
-                              {fileInfo.file.name} ({fileInfo.bankType}, {fileInfo.rowCount} rows)
-                            </div>
-                          ))}
-                        </div>
-                        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', opacity: 0.8 }}>
-                          You can upload more files to merge them
-                        </div>
-                      </div>
-                    ) : (
-                      <span>Drag and drop your CSV file(s) here, or <span className="upload-link">click to upload</span></span>
-                    )}
-                  </div>
+                      ) : (
+                        <span>Drag and drop your CSV file(s) here, or <span className="upload-link">click to upload</span></span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {csvData.length > 0 && (
                   <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', justifyContent: 'center' }}>
