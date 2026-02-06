@@ -407,7 +407,7 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
     }
 
     // Convert database format to app format (with decryption of sensitive fields)
-    const csvData: Transaction[] = await Promise.all(
+    const rawCsvData: Transaction[] = await Promise.all(
       (transactions || []).map(async (tx) => {
         // Decrypt sensitive fields
         let decryptedDescription: string;
@@ -444,7 +444,37 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
       })
     );
 
-    const subs: Subscription[] = await Promise.all(
+    // De-duplicate transactions by a stable key so we don't keep
+    // inflating counts when there are duplicate rows in Supabase.
+    const seenTxKeys = new Set<string>();
+    const csvData: Transaction[] = [];
+    rawCsvData.forEach((tx) => {
+      const key = [
+        tx.Description,
+        tx.Amount,
+        tx.Type,
+        tx.Date,
+        tx.Currency,
+        tx.BankSource,
+        tx.Account,
+        tx.Category || ''
+      ].join('::');
+
+      if (seenTxKeys.has(key)) {
+        console.log('⏭️ [UserDataService] Skipping duplicate transaction on load:', {
+          Description: tx.Description,
+          Amount: tx.Amount,
+          Date: tx.Date,
+          Account: tx.Account,
+        });
+        return;
+      }
+
+      seenTxKeys.add(key);
+      csvData.push(tx);
+    });
+
+    const rawSubs: Subscription[] = await Promise.all(
       (subscriptions || []).map(async (sub) => {
         // Decrypt sensitive fields
         let decryptedDescription: string;
@@ -472,6 +502,35 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
         };
       })
     );
+
+    // De-duplicate subscriptions by a stable key as well
+    const seenSubKeys = new Set<string>();
+    const subs: Subscription[] = [];
+    rawSubs.forEach((sub) => {
+      const key = [
+        sub.description,
+        sub.total,
+        sub.count,
+        sub.average,
+        sub.maxAmount,
+        sub.firstDate ? sub.firstDate.toISOString().split('T')[0] : '',
+        sub.lastDate ? sub.lastDate.toISOString().split('T')[0] : '',
+        sub.frequency ?? '',
+        sub.avgDaysBetween ?? ''
+      ].join('::');
+
+      if (seenSubKeys.has(key)) {
+        console.log('⏭️ [UserDataService] Skipping duplicate subscription on load:', {
+          description: sub.description,
+          total: sub.total,
+          count: sub.count,
+        });
+        return;
+      }
+
+      seenSubKeys.add(key);
+      subs.push(sub);
+    });
 
     // Convert uploaded files and de-duplicate by (file_name, file_size, last_modified)
     const seenFileKeys = new Set<string>();
