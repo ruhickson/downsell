@@ -473,16 +473,37 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
       })
     );
 
-    const files: UploadedFileInput[] = (uploadedFiles || []).map(file => ({
-      bankType: file.bank_type,
-      rowCount: file.row_count,
-      account: file.account,
-      fileName: file.file_name || undefined,
-      fileSize: file.file_size || undefined,
-      fileType: file.file_type || undefined,
-      lastModified: file.last_modified || undefined,
-      createdAt: file.created_at || undefined
-    }));
+    // Convert uploaded files and de-duplicate by (file_name, file_size, last_modified)
+    const seenFileKeys = new Set<string>();
+    const files: UploadedFileInput[] = [];
+
+    (uploadedFiles || []).forEach(file => {
+      const name = file.file_name || '';
+      const size = typeof file.file_size === 'number' ? file.file_size : '';
+      const lastModified = typeof file.last_modified === 'number' ? file.last_modified : '';
+      const key = `${name}::${size}::${lastModified}`;
+
+      if (seenFileKeys.has(key)) {
+        console.log('⏭️ [UserDataService] Skipping duplicate uploaded file on load:', {
+          name,
+          size,
+          lastModified
+        });
+        return;
+      }
+
+      seenFileKeys.add(key);
+      files.push({
+        bankType: file.bank_type,
+        rowCount: file.row_count,
+        account: file.account,
+        fileName: file.file_name || undefined,
+        fileSize: file.file_size || undefined,
+        fileType: file.file_type || undefined,
+        lastModified: file.last_modified || undefined,
+        createdAt: file.created_at || undefined
+      });
+    });
 
     console.log('📂 [UserDataService] User data loaded from Supabase for', email, {
       csvDataCount: csvData.length,
