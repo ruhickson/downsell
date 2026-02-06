@@ -687,7 +687,15 @@ const App: React.FC = () => {
   const [_isMobile, setIsMobile] = useState(false);
   const [supportedBanksCollapsed, setSupportedBanksCollapsed] = useState(false);
   const [isLoadingUserData, setIsLoadingUserData] = useState(false);
-  const [uploadedFiles, setUploadedFiles] = useState<Array<{ file: File; bankType: string; rowCount: number; account: string; createdAt?: string }>>([]);
+  const [uploadedFiles, setUploadedFiles] = useState<Array<{
+    file: File;
+    bankType: string;
+    rowCount: number;
+    account: string;
+    createdAt?: string;
+    fileSize?: number;
+    lastModified?: number;
+  }>>([]);
   const [_accountCounters, setAccountCounters] = useState<{ AIB: number; Revolut: number; BOI: number; N26: number; BUNQ: number; Nationwide: number; PTSB: number; Monzo: number }>({
     AIB: 0,
     Revolut: 0,
@@ -798,7 +806,9 @@ const App: React.FC = () => {
                     rowCount: fileMeta.rowCount,
                     account: fileMeta.account,
                     createdAt: fileMeta.createdAt, // Include timestamp
-                    // Create a minimal File-like object for compatibility
+                    fileSize: fileMeta.fileSize,
+                    lastModified: fileMeta.lastModified,
+                    // Create a minimal File-like object for compatibility (size may be 0)
                     file: new File([], fileMeta.fileName || 'restored.csv', { 
                       type: fileMeta.fileType || 'text/csv',
                       lastModified: fileMeta.lastModified || Date.now()
@@ -1188,7 +1198,14 @@ const App: React.FC = () => {
           // Update uploaded files list
           // Note: Duplicate checking is done before processCSVFile is called
           setUploadedFiles(prevFiles => {
-            const newFile = { file, bankType, rowCount, account };
+            const newFile = {
+              file,
+              bankType,
+              rowCount,
+              account,
+              fileSize: file.size,
+              lastModified: file.lastModified,
+            };
             const updatedFiles = mergeWithExisting ? [...prevFiles, newFile] : [newFile];
             
             // Trigger save after a short delay to ensure state is updated
@@ -1245,29 +1262,31 @@ const App: React.FC = () => {
   // Helper function to check if a file is a duplicate
   // Checks against both current session files and files loaded from database
   const isFileDuplicate = (file: File): boolean => {
+    const name = file.name;
+    const size = file.size;
+    const lastModified = file.lastModified;
+
     return uploadedFiles.some(existingFile => {
-      // Get file properties from the File object
-      const existingName = existingFile.file.name;
-      const existingSize = existingFile.file.size;
-      const existingLastModified = existingFile.file.lastModified;
-      
-      // Also check if we have metadata from database (for restored files)
-      // This handles files that were loaded from the database
-      const matchesFileObject = existingName === file.name &&
-                                existingSize === file.size &&
-                                existingLastModified === file.lastModified;
-      
-      // If the file object matches, it's a duplicate
-      if (matchesFileObject) {
+      // Prefer real File object values if present, otherwise fall back to stored metadata
+      const existingName = existingFile.file?.name || '';
+      const existingSize = typeof existingFile.file?.size === 'number'
+        ? existingFile.file.size
+        : (existingFile.fileSize ?? 0);
+      const existingLastModified = typeof existingFile.file?.lastModified === 'number'
+        ? existingFile.file.lastModified
+        : (existingFile.lastModified ?? 0);
+
+      // Exact match on name, size, and lastModified
+      if (existingName === name && existingSize === size && existingLastModified === lastModified) {
         return true;
       }
-      
-      // Also check by name and size only (in case lastModified differs slightly)
-      // This catches cases where the same file is uploaded again even if metadata differs slightly
-      const matchesByNameAndSize = existingName === file.name &&
-                                   existingSize === file.size;
-      
-      return matchesByNameAndSize;
+
+      // Fallback: match on name + size only (handles minor lastModified differences)
+      if (existingName === name && existingSize === size) {
+        return true;
+      }
+
+      return false;
     });
   };
 
@@ -2480,7 +2499,7 @@ const App: React.FC = () => {
                     onChange={handleFileUpload}
                   />
                   {isLoadingUserData ? (
-                    <div className="upload-prompt" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', minHeight: '120px' }}>
+                    <div className="upload-prompt" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.75rem', minHeight: '140px', textAlign: 'center' }}>
                       <div style={{
                         width: '40px',
                         height: '40px',
@@ -2490,6 +2509,9 @@ const App: React.FC = () => {
                         animation: 'spin 1s linear infinite'
                       }}></div>
                       <span style={{ fontSize: '0.95rem', opacity: 0.9 }}>Loading your data...</span>
+                      <span style={{ fontSize: '0.8rem', opacity: 0.85 }}>
+                        Your data is encrypted in your browser, so you're the only one who ever sees it.
+                      </span>
                     </div>
                   ) : (
                     <div className="upload-prompt">
