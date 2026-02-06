@@ -214,7 +214,10 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
         totalInserted += insertedData?.length || 0;
         console.log(`✅ [UserDataService] Batch ${Math.floor(i/batchSize) + 1} inserted:`, insertedData?.length || 0, 'records');
       }
-      console.log('✅ [UserDataService] Transactions saved. Total inserted:', totalInserted, 'records');
+      console.log('✅ [UserDataService] Transactions saved. Total inserted:', totalInserted, 'records (expected:', data.csvData.length, ')');
+      if (totalInserted !== data.csvData.length) {
+        console.warn('⚠️ [UserDataService] Mismatch: Expected to insert', data.csvData.length, 'transactions but inserted', totalInserted);
+      }
     }
 
     // Insert subscriptions (with encryption of sensitive fields)
@@ -451,15 +454,29 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
     const seenTxKeys = new Set<string>();
     const csvData: Transaction[] = [];
     rawCsvData.forEach((tx) => {
-      // Build key from immutable transaction fields (exclude Category which can change)
+      // Normalize fields to avoid false positives from:
+      // - Floating point precision differences (round to 2 decimal places)
+      // - Whitespace differences in Description
+      // - Case differences in Type/Currency/BankSource
+      const normalizedDescription = (tx.Description || '').trim();
+      const normalizedAmount = typeof tx.Amount === 'number' 
+        ? Math.round(tx.Amount * 100) / 100  // Round to 2 decimal places
+        : parseFloat(String(tx.Amount || 0));
+      const normalizedType = (tx.Type || '').trim().toUpperCase();
+      const normalizedDate = (tx.Date || '').trim(); // Keep date as-is for now
+      const normalizedCurrency = (tx.Currency || '').trim().toUpperCase();
+      const normalizedBankSource = (tx.BankSource || '').trim();
+      const normalizedAccount = (tx.Account || '').trim();
+
+      // Build key from normalized immutable transaction fields
       const key = [
-        tx.Description,
-        tx.Amount,
-        tx.Type,
-        tx.Date,
-        tx.Currency,
-        tx.BankSource,
-        tx.Account
+        normalizedDescription,
+        normalizedAmount,
+        normalizedType,
+        normalizedDate,
+        normalizedCurrency,
+        normalizedBankSource,
+        normalizedAccount
       ].join('::');
 
       if (seenTxKeys.has(key)) {
@@ -468,6 +485,7 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
           Amount: tx.Amount,
           Date: tx.Date,
           Account: tx.Account,
+          key: key.substring(0, 100) // Log first 100 chars of key for debugging
         });
         return;
       }
