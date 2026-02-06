@@ -447,57 +447,11 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
       })
     );
 
-    // De-duplicate transactions by a stable key so we don't keep
-    // inflating counts when there are duplicate rows in Supabase.
-    // NOTE: We exclude Category from the key because categories can change over time
-    // (e.g., via LLM enhancement) and shouldn't affect transaction identity.
-    // NOTE: We exclude Type from the key because:
-    // 1. For some banks (BOI, BUNQ, PTSB), Type is inferred from Amount sign, so transfers
-    //    can appear as both DEBIT and CREDIT, but they're the same transaction.
-    // 2. Type can vary for the same transaction (e.g., "TRANSFER" vs "DEBIT TRANSFER" vs "CREDIT TRANSFER")
-    //    and shouldn't affect transaction identity.
-    const seenTxKeys = new Set<string>();
-    const csvData: Transaction[] = [];
-    rawCsvData.forEach((tx) => {
-      // Normalize fields to avoid false positives from:
-      // - Floating point precision differences (round to 2 decimal places)
-      // - Whitespace differences in Description
-      // - Case differences in Currency/BankSource
-      const normalizedDescription = (tx.Description || '').trim();
-      // Keep signed amount (don't use absolute value) so transfers that appear as both
-      // debit (-100) and credit (+100) are treated as different transactions
-      const normalizedAmount = typeof tx.Amount === 'number' 
-        ? Math.round(tx.Amount * 100) / 100  // Round to 2 decimal places
-        : parseFloat(String(tx.Amount || 0));
-      const normalizedDate = (tx.Date || '').trim(); // Keep date as-is for now
-      const normalizedCurrency = (tx.Currency || '').trim().toUpperCase();
-      const normalizedBankSource = (tx.BankSource || '').trim();
-      const normalizedAccount = (tx.Account || '').trim();
-
-      // Build key from normalized immutable transaction fields (exclude Type and Category)
-      const key = [
-        normalizedDescription,
-        normalizedAmount,
-        normalizedDate,
-        normalizedCurrency,
-        normalizedBankSource,
-        normalizedAccount
-      ].join('::');
-
-      if (seenTxKeys.has(key)) {
-        console.log('⏭️ [UserDataService] Skipping duplicate transaction on load:', {
-          Description: tx.Description,
-          Amount: tx.Amount,
-          Date: tx.Date,
-          Account: tx.Account,
-          key: key.substring(0, 100) // Log first 100 chars of key for debugging
-        });
-        return;
-      }
-
-      seenTxKeys.add(key);
-      csvData.push(tx);
-    });
+    // No deduplication for transactions - if there are multiple identical transactions
+    // (e.g., multiple "Exchange to BTC" transactions on the same day), they should all be kept.
+    // Any true duplicates in Supabase from multiple saves will be handled by the database constraints
+    // or can be cleaned up separately if needed.
+    const csvData: Transaction[] = rawCsvData;
 
     const rawSubs: Subscription[] = await Promise.all(
       (subscriptions || []).map(async (sub) => {
@@ -528,34 +482,11 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
       })
     );
 
-    // De-duplicate subscriptions by a stable key as well
-    const seenSubKeys = new Set<string>();
-    const subs: Subscription[] = [];
-    rawSubs.forEach((sub) => {
-      const key = [
-        sub.description,
-        sub.total,
-        sub.count,
-        sub.average,
-        sub.maxAmount,
-        sub.firstDate ? sub.firstDate.toISOString().split('T')[0] : '',
-        sub.lastDate ? sub.lastDate.toISOString().split('T')[0] : '',
-        sub.frequency ?? '',
-        sub.avgDaysBetween ?? ''
-      ].join('::');
-
-      if (seenSubKeys.has(key)) {
-        console.log('⏭️ [UserDataService] Skipping duplicate subscription on load:', {
-          description: sub.description,
-          total: sub.total,
-          count: sub.count,
-        });
-        return;
-      }
-
-      seenSubKeys.add(key);
-      subs.push(sub);
-    });
+    // No deduplication for subscriptions - if there are multiple identical subscriptions
+    // (e.g., from multiple saves or recalculations), they should all be kept.
+    // Any true duplicates in Supabase from multiple saves will be handled by the database constraints
+    // or can be cleaned up separately if needed.
+    const subs: Subscription[] = rawSubs;
 
     // Convert uploaded files and de-duplicate by (file_name, file_size, last_modified)
     const seenFileKeys = new Set<string>();
@@ -590,11 +521,11 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
     });
 
     console.log('📂 [UserDataService] User data loaded from Supabase for', email, {
-      rawTransactionsFromDB: (transactions || []).length,
+      transactionsFromDB: (transactions || []).length,
       csvDataCount: csvData.length,
+      subscriptionsFromDB: (subscriptions || []).length,
       subscriptionsCount: subs.length,
-      uploadedFilesCount: files.length,
-      duplicatesFiltered: (transactions || []).length - csvData.length
+      uploadedFilesCount: files.length
     });
 
     return {
