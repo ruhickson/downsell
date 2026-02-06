@@ -266,35 +266,79 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
         fileType: f.file?.type || f.fileType,
         lastModified: f.file?.lastModified || f.lastModified
       })), null, 2));
-      
-      const uploadedFiles = data.uploadedFiles.map(file => ({
-        user_email: email,
-        bank_type: file.bankType,
-        row_count: file.rowCount,
-        account: file.account,
-        file_name: file.file?.name || file.fileName || null,
-        file_size: file.file?.size || file.fileSize || null,
-        file_type: file.file?.type || file.fileType || null,
-        last_modified: file.file?.lastModified || file.lastModified || null
-      }));
 
-      console.log('📁 [UserDataService] Mapped file data:', JSON.stringify(uploadedFiles[0], null, 2));
-      console.log('💾 [UserDataService] Inserting', uploadedFiles.length, 'uploaded files');
-      const { data: insertedData, error } = await supabase.from('user_uploaded_files').insert(uploadedFiles).select();
-      if (error) {
-        console.error('❌ [UserDataService] Error inserting uploaded files:', error);
-        console.error('Error details:', JSON.stringify(error, null, 2));
-        console.error('Error code:', error.code, 'Error message:', error.message);
-        if (error.code === 'PGRST301' || error.message?.includes('permission denied') || error.message?.includes('RLS')) {
-          console.error('🚨 [UserDataService] RLS POLICY BLOCKING INSERT! Check RLS policies in Supabase.');
-        }
-        return false;
+      // Load existing uploaded_files for this user so we don't insert duplicates
+      const { data: existingFiles, error: existingFilesError } = await supabase
+        .from('user_uploaded_files')
+        .select('file_name, file_size, last_modified')
+        .eq('user_email', email);
+
+      if (existingFilesError) {
+        console.error('❌ [UserDataService] Error loading existing uploaded files for duplicate check:', existingFilesError);
       }
-      console.log('✅ [UserDataService] Uploaded files saved successfully. Inserted:', insertedData?.length || 0, 'records');
-      if (insertedData && insertedData.length > 0) {
-        console.log('✅ [UserDataService] Verified: Files exist in database:', insertedData.map(f => f.id));
+
+      const existingKeySet = new Set(
+        (existingFiles || []).map((f: any) => {
+          const name = f.file_name || '';
+          const size = typeof f.file_size === 'number' ? f.file_size : '';
+          const lastModified = typeof f.last_modified === 'number' ? f.last_modified : '';
+          return `${name}::${size}::${lastModified}`;
+        })
+      );
+
+      const newFiles = data.uploadedFiles.filter(file => {
+        const name = file.file?.name || file.fileName || '';
+        const size = typeof file.file?.size === 'number'
+          ? file.file.size
+          : (file.fileSize ?? '');
+        const lastModified = typeof file.file?.lastModified === 'number'
+          ? file.file.lastModified
+          : (file.lastModified ?? '');
+
+        const key = `${name}::${size}::${lastModified}`;
+        const isDuplicate = existingKeySet.has(key);
+        if (isDuplicate) {
+          console.log('⏭️ [UserDataService] Skipping duplicate uploaded file (already in Supabase):', {
+            name,
+            size,
+            lastModified
+          });
+        }
+        return !isDuplicate;
+      });
+
+      if (newFiles.length === 0) {
+        console.log('📁 [UserDataService] No new uploaded files to save (all are already in Supabase)');
       } else {
-        console.error('❌ [UserDataService] WARNING: Insert returned success but no data!');
+        const uploadedFiles = newFiles.map(file => ({
+          user_email: email,
+          bank_type: file.bankType,
+          row_count: file.rowCount,
+          account: file.account,
+          file_name: file.file?.name || file.fileName || null,
+          file_size: file.file?.size || file.fileSize || null,
+          file_type: file.file?.type || file.fileType || null,
+          last_modified: file.file?.lastModified || file.lastModified || null
+        }));
+
+        console.log('📁 [UserDataService] Mapped file data for insert:', JSON.stringify(uploadedFiles[0], null, 2));
+        console.log('💾 [UserDataService] Inserting', uploadedFiles.length, 'new uploaded files');
+        const { data: insertedData, error } = await supabase.from('user_uploaded_files').insert(uploadedFiles).select();
+        if (error) {
+          console.error('❌ [UserDataService] Error inserting uploaded files:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
+          console.error('Error code:', error.code, 'Error message:', error.message);
+          if (error.code === 'PGRST301' || error.message?.includes('permission denied') || error.message?.includes('RLS')) {
+            console.error('🚨 [UserDataService] RLS POLICY BLOCKING INSERT! Check RLS policies in Supabase.');
+          }
+          return false;
+        }
+        console.log('✅ [UserDataService] Uploaded files saved successfully. Inserted:', insertedData?.length || 0, 'records');
+        if (insertedData && insertedData.length > 0) {
+          console.log('✅ [UserDataService] Verified: Files exist in database:', insertedData.map(f => f.id));
+        } else {
+          console.error('❌ [UserDataService] WARNING: Insert returned success but no data!');
+        }
       }
     } else {
       console.log('⚠️ [UserDataService] No uploaded files to save (array is empty)');
