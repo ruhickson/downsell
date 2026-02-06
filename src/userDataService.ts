@@ -451,28 +451,33 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
     // inflating counts when there are duplicate rows in Supabase.
     // NOTE: We exclude Category from the key because categories can change over time
     // (e.g., via LLM enhancement) and shouldn't affect transaction identity.
+    // NOTE: We exclude Type from the key because:
+    // 1. For some banks (BOI, BUNQ, PTSB), Type is inferred from Amount sign, so transfers
+    //    can appear as both DEBIT and CREDIT, but they're the same transaction.
+    // 2. Type can vary for the same transaction (e.g., "TRANSFER" vs "DEBIT TRANSFER" vs "CREDIT TRANSFER")
+    //    and shouldn't affect transaction identity.
     const seenTxKeys = new Set<string>();
     const csvData: Transaction[] = [];
     rawCsvData.forEach((tx) => {
       // Normalize fields to avoid false positives from:
       // - Floating point precision differences (round to 2 decimal places)
       // - Whitespace differences in Description
-      // - Case differences in Type/Currency/BankSource
+      // - Case differences in Currency/BankSource
       const normalizedDescription = (tx.Description || '').trim();
+      // Keep signed amount (don't use absolute value) so transfers that appear as both
+      // debit (-100) and credit (+100) are treated as different transactions
       const normalizedAmount = typeof tx.Amount === 'number' 
         ? Math.round(tx.Amount * 100) / 100  // Round to 2 decimal places
         : parseFloat(String(tx.Amount || 0));
-      const normalizedType = (tx.Type || '').trim().toUpperCase();
       const normalizedDate = (tx.Date || '').trim(); // Keep date as-is for now
       const normalizedCurrency = (tx.Currency || '').trim().toUpperCase();
       const normalizedBankSource = (tx.BankSource || '').trim();
       const normalizedAccount = (tx.Account || '').trim();
 
-      // Build key from normalized immutable transaction fields
+      // Build key from normalized immutable transaction fields (exclude Type and Category)
       const key = [
         normalizedDescription,
         normalizedAmount,
-        normalizedType,
         normalizedDate,
         normalizedCurrency,
         normalizedBankSource,
