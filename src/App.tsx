@@ -22,7 +22,7 @@ import { trackPageView, trackButtonClick, trackCSVUpload, trackPDFDownload, trac
 import { categorizeTransactionSync, type Category, getCategoryColor } from './categories';
 import { enhanceCategoriesWithLLM } from './categoryEnhancer';
 import SankeyDiagram from './SankeyDiagram';
-import { saveUserData, loadUserData, deleteFileAndAssociatedData } from './userDataService';
+import { saveUserData, loadUserData, deleteFileAndAssociatedData, clearUserData } from './userDataService';
 
 ChartJS.register(
   CategoryScale,
@@ -1975,6 +1975,45 @@ const App: React.FC = () => {
             })}
           </nav>
           <div style={{ padding: '1rem', marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            {user && profile && (
+              <button
+                className="optimize-btn"
+                onClick={async () => {
+                  const confirmed = window.confirm(
+                    'This will permanently delete your saved account data (transactions, subscriptions, and uploaded file metadata) from our systems and log you out.\n\nThis action cannot be undone. Do you want to continue?'
+                  );
+                  if (!confirmed || !profile?.email) return;
+
+                  try {
+                    trackButtonClick('Delete Account', { location: 'sidebar' });
+                    await clearUserData(profile.email);
+                    // Clear local session and state
+                    localStorage.removeItem('google-oauth-user');
+                    setUser(null);
+                    setProfile(null);
+                    setCsvData([]);
+                    setSubscriptions([]);
+                    setUploadedFiles([]);
+                    setActiveTab('Analysis');
+                    alert('Your account and saved data have been deleted.');
+                  } catch (err) {
+                    console.error('Failed to delete account:', err);
+                    alert('Something went wrong while deleting your account. Please try again.');
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  padding: '0.6rem 1rem',
+                  fontSize: '0.9rem',
+                  backgroundColor: '#ef4444',
+                  borderColor: '#ef4444',
+                  color: '#ffffff',
+                  fontWeight: 600,
+                }}
+              >
+                Delete my account
+              </button>
+            )}
             <button
               className="optimize-btn"
               onClick={() => {
@@ -3956,7 +3995,7 @@ const App: React.FC = () => {
                       2. Purpose of Data Processing
                     </h2>
                     <p style={{ marginBottom: '1rem' }}>
-                      Downsell is a free, client-side financial analysis tool designed to help you understand your spending patterns and identify recurring subscriptions. When you upload a CSV file containing your bank statement data, we process it to:
+                      Downsell is a free financial analysis tool designed to help you understand your spending patterns and identify recurring subscriptions. When you upload a CSV file containing your bank statement data, we process it to:
                     </p>
                     <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
                       <li>Identify recurring transactions and potential subscriptions</li>
@@ -3965,7 +4004,7 @@ const App: React.FC = () => {
                       <li>Provide insights to help you make informed decisions about your finances</li>
                     </ul>
                     <p>
-                      <strong style={{ color: 'white' }}>Important:</strong> All data processing occurs entirely within your web browser. Your financial data never leaves your device and is not transmitted to our servers.
+                      <strong style={{ color: 'white' }}>Important:</strong> All analysis is initiated and performed by code running in your browser. If you choose to create an account and save your data, your transactions and subscriptions are <strong style={{ color: 'white' }}>encrypted in your browser first</strong> and then stored in our database for later retrieval. This encrypted storage allows you to pick up where you left off while keeping your transaction details private from us (including database administrators).
                     </p>
                   </section>
 
@@ -3983,117 +4022,42 @@ const App: React.FC = () => {
                       4. Data Storage and Processing
                     </h2>
                     <p style={{ marginBottom: '1rem' }}>
-                      No financial data is stored permanently. No personal data is sent to servers. Your privacy is protected.
+                      Downsell operates in two modes:
                     </p>
-                    
-                    {/* Privacy & Data Processing Diagram */}
-                    <div style={{ 
-                      marginBottom: '2rem', 
-                      padding: '2rem', 
-                      background: 'rgba(45, 140, 255, 0.1)', 
-                      borderRadius: '12px', 
-                      border: '1px solid rgba(45, 140, 255, 0.3)',
-                      textAlign: 'center'
-                    }}>
-                      <h3 style={{ fontSize: '1.3rem', fontWeight: 600, marginBottom: '1.5rem', color: 'white' }}>
-                        🔒 Your Data Never Leaves Your Device
-                      </h3>
-                      <div style={{ 
-                        display: 'flex', 
-                        flexWrap: 'wrap', 
-                        justifyContent: 'center', 
-                        alignItems: 'center', 
-                        gap: '1rem',
-                        marginBottom: '1rem'
-                      }}>
-                        <div style={{ 
-                          padding: '1.5rem', 
-                          background: 'rgba(255, 255, 255, 0.1)', 
-                          borderRadius: '8px',
-                          minWidth: '150px',
-                          flex: '1',
-                          maxWidth: '200px'
-                        }}>
-                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📤</div>
-                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>1. Upload CSV</div>
-                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>You upload your bank statement CSV file</div>
-                        </div>
-                        <div style={{ fontSize: '1.5rem', color: '#2d8cff' }}>→</div>
-                        <div style={{ 
-                          padding: '1.5rem', 
-                          background: 'rgba(255, 255, 255, 0.1)', 
-                          borderRadius: '8px',
-                          minWidth: '150px',
-                          flex: '1',
-                          maxWidth: '200px'
-                        }}>
-                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⚙️</div>
-                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>2. Process in Memory</div>
-                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>File processed entirely in your browser's memory</div>
-                        </div>
-                        <div style={{ fontSize: '1.5rem', color: '#2d8cff' }}>→</div>
-                        <div style={{ 
-                          padding: '1.5rem', 
-                          background: 'rgba(255, 255, 255, 0.1)', 
-                          borderRadius: '8px',
-                          minWidth: '150px',
-                          flex: '1',
-                          maxWidth: '200px'
-                        }}>
-                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📊</div>
-                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>3. Generate Output</div>
-                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>Analysis, charts, and reports created</div>
-                        </div>
-                        <div style={{ fontSize: '1.5rem', color: '#2d8cff' }}>→</div>
-                        <div style={{ 
-                          padding: '1.5rem', 
-                          background: 'rgba(255, 255, 255, 0.1)', 
-                          borderRadius: '8px',
-                          minWidth: '150px',
-                          flex: '1',
-                          maxWidth: '200px'
-                        }}>
-                          <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🗑️</div>
-                          <div style={{ fontWeight: 600, color: 'white', marginBottom: '0.3rem' }}>4. Auto-Deleted</div>
-                          <div style={{ fontSize: '0.9rem', color: '#bfc9da' }}>File automatically cleared when you close the browser</div>
-                        </div>
-                      </div>
-                      <p style={{ 
-                        marginTop: '1.5rem', 
-                        fontSize: '1.1rem', 
-                        fontWeight: 600, 
-                        color: '#2d8cff',
-                        padding: '1rem',
-                        background: 'rgba(45, 140, 255, 0.15)',
-                        borderRadius: '8px'
-                      }}>
-                        ✅ No financial data is stored permanently. No personal data is sent to servers. Your privacy is protected.
-                      </p>
-                    </div>
+                    <ul style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
+                      <li>
+                        <strong style={{ color: 'white' }}>Ephemeral mode (not signed in):</strong> Your CSV file and all derived analytics exist only in your browser's memory (and optionally in your browser's local storage if you keep the tab open). Nothing is sent to our servers in this mode.
+                      </li>
+                      <li>
+                        <strong style={{ color: 'white' }}>Signed-in mode (data persistence):</strong> If you choose to sign in and save your analysis, we store an <strong style={{ color: 'white' }}>encrypted</strong> copy of your transactions, subscriptions, and uploaded file metadata in our managed database (Supabase) so that your dashboard can be restored across sessions.
+                      </li>
+                    </ul>
 
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>Client-Side Processing Only:</strong>
+                      <strong style={{ color: 'white' }}>Client-Side Encryption of Financial Data:</strong>
                     </p>
                     <ul style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
-                      <li>Your CSV file and all transaction data are processed entirely within your web browser</li>
-                      <li>No financial data is stored on our servers</li>
-                      <li>No financial data is transmitted to our servers or any third-party services</li>
-                      <li>Your data remains on your device and is cleared when you close your browser (unless you choose to keep it in browser storage)</li>
+                      <li>
+                        Before any transaction or subscription data is sent to our database, sensitive fields (such as transaction descriptions and original CSV row data) are encrypted <strong style={{ color: 'white' }}>in your browser</strong> using industry-standard cryptography (AES‑GCM, 256‑bit keys).
+                      </li>
+                      <li>
+                        The encryption key is derived from your email address using PBKDF2 (a secure key‑derivation function). We <strong style={{ color: 'white' }}>never store this key</strong> on our servers. It is re‑derived in your browser when you log back in.
+                      </li>
+                      <li>
+                        Because we do not have access to your derived key, <strong style={{ color: 'white' }}>no one on our side – not developers, operators, or database administrators – can read your transaction descriptions or original CSV rows in plain text.</strong> They can only see encrypted blobs and non‑sensitive numeric fields (such as amounts, dates, and aggregate statistics).
+                      </li>
+                      <li>
+                        Uploaded file metadata (for example: bank name, number of rows, approximate file size, and timestamps) is stored unencrypted so we can show you a “My files” list and manage deletion. This metadata does <strong style={{ color: 'white' }}>not</strong> include raw transaction lines.
+                      </li>
                     </ul>
+
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>Local Storage (Statistics Only):</strong>
-                    </p>
-                    <p style={{ marginBottom: '1rem' }}>
-                      We use your browser's local storage to maintain anonymous usage statistics, including:
+                      <strong style={{ color: 'white' }}>Local Storage and In‑Browser Data:</strong>
                     </p>
                     <ul style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
-                      <li>Number of CSV files uploaded (aggregate count only)</li>
-                      <li>Number of transactions analyzed (aggregate count only)</li>
-                      <li>Number of PDF reports generated (aggregate count only)</li>
+                      <li>We use your browser's local storage to cache your current session data and anonymous usage statistics, so the app feels responsive even before cloud data is synced.</li>
+                      <li>You control this storage: you can clear it at any time via your browser settings, and doing so removes locally cached CSV and analysis data from your device.</li>
                     </ul>
-                    <p>
-                      <strong style={{ color: 'white' }}>No personal or financial data is stored.</strong> These statistics are anonymous and cannot be used to identify you or your financial information.
-                    </p>
                   </section>
 
                   <section style={{ marginBottom: '3rem' }}>
@@ -4119,10 +4083,13 @@ const App: React.FC = () => {
                       6. Data Retention
                     </h2>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>Financial Data:</strong> Your CSV data and transaction information are not retained by us. They exist only in your browser's memory during your session and are cleared when you close your browser tab or refresh the page.
+                      <strong style={{ color: 'white' }}>Financial Data (Signed‑In Users):</strong> If you choose to sign in and save your analysis, we retain your <strong style={{ color: 'white' }}>encrypted</strong> transaction and subscription data in our database so that you can revisit your dashboard. This data is kept until you delete it (for example, by removing files in the “My files” tab) or request deletion, or until we remove inactive accounts as part of routine housekeeping.
                     </p>
                     <p>
-                      <strong style={{ color: 'white' }}>Usage Statistics:</strong> Anonymous usage statistics stored in your browser's local storage are retained indefinitely unless you clear your browser's local storage. You can clear this data at any time through your browser settings.
+                      <strong style={{ color: 'white' }}>Financial Data (Ephemeral Sessions):</strong> If you do not sign in, your CSV data and transaction information remain only in your browser (memory / local storage) and are cleared when you close the tab, refresh the page, or clear local storage.
+                    </p>
+                    <p>
+                      <strong style={{ color: 'white' }}>Usage Statistics:</strong> Anonymous usage statistics stored in your browser's local storage are retained until you clear them via your browser settings. Server‑side analytics and auth logs (e.g. login/logout events) are retained for a limited period necessary to monitor service health, prevent abuse, and understand high‑level usage patterns.
                     </p>
                   </section>
 
@@ -4155,13 +4122,25 @@ const App: React.FC = () => {
                       <strong style={{ color: 'white' }}>Hosting Provider:</strong>
                     </p>
                     <p style={{ marginLeft: '1.5rem', marginBottom: '1.5rem' }}>
-                      Our application is hosted by <strong style={{ color: 'white' }}>Netlify</strong> (Netlify, Inc., 44 Montgomery Street, Suite 750, San Francisco, CA 94104, USA). Netlify may process technical data (IP addresses, request logs) necessary for hosting the application. Netlify is GDPR-compliant and processes data in accordance with their privacy policy: <a href="https://www.netlify.com/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://www.netlify.com/privacy/</a>
+                      Our application is hosted by <strong style={{ color: 'white' }}>Netlify</strong> (Netlify, Inc., 44 Montgomery Street, Suite 750, San Francisco, CA 94104, USA). Netlify processes technical data (such as IP addresses and request logs) necessary to deliver the site. Netlify is GDPR‑compliant and processes data in accordance with their privacy policy: <a href="https://www.netlify.com/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://www.netlify.com/privacy/</a>.
                     </p>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>No Data Sharing:</strong>
+                      <strong style={{ color: 'white' }}>Database and Authentication:</strong>
                     </p>
                     <p>
-                      We do not share, sell, or transfer your financial data to any third parties. Your CSV data and transaction information never leave your browser and are not accessible to Netlify or any other third-party service.
+                      We use <strong style={{ color: 'white' }}>Supabase</strong> as our managed database and authentication provider. When you sign in and choose to save your analysis, Supabase stores an encrypted copy of your financial data (as described above) along with basic account identifiers (such as your email address) so we can link the encrypted data to your account. Supabase acts as a data processor on our behalf, and processes data in accordance with their privacy policy: <a href="https://supabase.com/privacy" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>https://supabase.com/privacy</a>.
+                    </p>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Authentication:</strong>
+                    </p>
+                    <p>
+                      We use <strong style={{ color: 'white' }}>Google OAuth</strong> to let you sign in with your Google account. Google acts as an independent controller of your Google account data. We receive only basic profile information (name, email, profile picture) from Google to create your session; your banking data is never shared with Google.
+                    </p>
+                    <p style={{ marginBottom: '1rem' }}>
+                      <strong style={{ color: 'white' }}>Analytics and Event Tracking:</strong>
+                    </p>
+                    <p>
+                      We use lightweight, first‑party analytics implemented via Netlify Functions (for example: tracking button clicks, CSV uploads, and login/logout events). These events may include your email address when necessary to understand account‑level retention (for example, when you logged in or out), but they <strong style={{ color: 'white' }}>never include raw transaction lines or unencrypted financial data</strong>.
                     </p>
                   </section>
 
@@ -4170,10 +4149,10 @@ const App: React.FC = () => {
                       9. Cookies and Tracking
                     </h2>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>Local Storage:</strong> We use your browser's local storage (not cookies) to store anonymous usage statistics and category caching. This data is stored locally on your device and is not transmitted to our servers.
+                      <strong style={{ color: 'white' }}>Local Storage:</strong> We use your browser's local storage (not third‑party cookies) to store anonymous usage statistics, category caching, and your current session state. This data is stored locally on your device and is not automatically transmitted to third‑party analytics providers.
                     </p>
                     <p style={{ marginBottom: '1rem' }}>
-                      <strong style={{ color: 'white' }}>Netlify Analytics:</strong> We use Netlify Analytics to collect aggregate, anonymized usage statistics about how visitors interact with our site. Netlify Analytics uses cookies to track page views and user interactions. This helps us understand which features are most used and improve the user experience. Netlify Analytics is privacy-focused and does not collect personally identifiable information. For more information, see <a href="https://www.netlify.com/legal/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>Netlify's Privacy Policy</a>.
+                      <strong style={{ color: 'white' }}>Netlify Analytics:</strong> We use Netlify Analytics to collect aggregate, anonymized usage statistics about how visitors interact with our site (for example, page views and high‑level traffic patterns). Netlify Analytics may use cookies or similar technologies, but is privacy‑focused and does not collect personally identifiable financial information. For more information, see <a href="https://www.netlify.com/legal/privacy/" target="_blank" rel="noopener noreferrer" style={{ color: '#2d8cff', textDecoration: 'none' }}>Netlify's Privacy Policy</a>.
                     </p>
                     <p style={{ marginBottom: '1rem' }}>
                       <strong style={{ color: 'white' }}>Cookie Consent:</strong> When you first visit our site, we will ask for your consent to use analytics cookies. You can accept or reject these cookies. Your choice will be remembered for future visits. You can change your cookie preferences at any time by clearing your browser's local storage.
@@ -4188,15 +4167,15 @@ const App: React.FC = () => {
                       10. Data Security
                     </h2>
                     <p style={{ marginBottom: '1rem' }}>
-                      Since all data processing occurs client-side in your browser, your financial data is protected by:
+                      Your financial data is protected by a combination of client‑side encryption and secure hosting:
                     </p>
                     <ul style={{ marginLeft: '1.5rem', marginBottom: '1rem' }}>
-                      <li>Your browser's built-in security features</li>
-                      <li>The fact that data never leaves your device</li>
-                      <li>No server-side storage means no risk of data breaches on our servers</li>
+                      <li>Your browser's built-in security features and sandboxing</li>
+                      <li>Client‑side encryption of sensitive financial fields before they are stored in our database</li>
+                      <li>Secure hosting and database services (Netlify and Supabase) with modern security practices</li>
                     </ul>
                     <p>
-                      We recommend using a secure, up-to-date web browser and clearing your browser data after each session if you're using a shared or public computer.
+                      We recommend using a secure, up‑to‑date web browser and clearing your browser data after each session if you're using a shared or public computer. While we take strong measures to protect your data, no system can guarantee absolute security.
                     </p>
                   </section>
 
@@ -4205,7 +4184,7 @@ const App: React.FC = () => {
                       11. International Data Transfers
                     </h2>
                     <p>
-                      Since your financial data is processed entirely within your browser and never transmitted to our servers, there are no international data transfers of your financial information. Our hosting provider (Netlify) may process technical data (IP addresses) in the United States, but this does not include any of your financial or transaction data.
+                      When you use Downsell in ephemeral mode (without signing in), we do not transfer your financial data internationally because it never leaves your browser. When you sign in and choose to save your encrypted financial data, that encrypted data is stored in Supabase's infrastructure in the region selected for our project (which may involve data centers outside your country of residence). These transfers are protected by Supabase's data protection measures and, where applicable, standard contractual clauses or equivalent safeguards.
                     </p>
                   </section>
 
