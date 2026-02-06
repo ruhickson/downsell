@@ -1217,33 +1217,7 @@ const App: React.FC = () => {
               fileSize: file.size,
               lastModified: file.lastModified,
             };
-            const updatedFiles = mergeWithExisting ? [...prevFiles, newFile] : [newFile];
-            
-            // Trigger save after a short delay to ensure state is updated
-            setTimeout(() => {
-              if (profile?.email && user) {
-                // Get current state using functional updates
-                setCsvData(currentCsvData => {
-                  setSubscriptions(currentSubscriptions => {
-                    console.log('💾 Manual save after CSV processing...', {
-                      email: profile.email,
-                      csvDataCount: currentCsvData.length,
-                      subscriptionsCount: currentSubscriptions.length,
-                      uploadedFilesCount: updatedFiles.length
-                    });
-                    saveUserData(profile.email, {
-                      csvData: currentCsvData,
-                      subscriptions: currentSubscriptions,
-                      uploadedFiles: updatedFiles
-                    });
-                    return currentSubscriptions;
-                  });
-                  return currentCsvData;
-                });
-              }
-            }, 500);
-            
-            return updatedFiles;
+            return mergeWithExisting ? [...prevFiles, newFile] : [newFile];
           });
           
         incrementStat('files_uploaded');
@@ -1344,6 +1318,33 @@ const App: React.FC = () => {
       await processCSVFile(filesToProcess[i], i > 0 || csvData.length > 0);
     }
     
+    // Save all uploaded files after all processing is complete
+    // This ensures all files are saved together, not individually
+    setTimeout(() => {
+      if (profile?.email && user) {
+        setCsvData(currentCsvData => {
+          setSubscriptions(currentSubscriptions => {
+            setUploadedFiles(currentUploadedFiles => {
+              console.log('💾 Manual save after all CSV files processed...', {
+                email: profile.email,
+                csvDataCount: currentCsvData.length,
+                subscriptionsCount: currentSubscriptions.length,
+                uploadedFilesCount: currentUploadedFiles.length
+              });
+              saveUserData(profile.email, {
+                csvData: currentCsvData,
+                subscriptions: currentSubscriptions,
+                uploadedFiles: currentUploadedFiles
+              });
+              return currentUploadedFiles;
+            });
+            return currentSubscriptions;
+          });
+          return currentCsvData;
+        });
+      }
+    }, 1000); // Wait 1 second after all files are processed to ensure state is fully updated
+    
     // Reset input to allow selecting the same files again
     if (inputRef.current) {
       inputRef.current.value = '';
@@ -1411,6 +1412,33 @@ const App: React.FC = () => {
     for (let i = 0; i < filesToProcess.length; i++) {
       await processCSVFile(filesToProcess[i], i > 0 || csvData.length > 0);
     }
+    
+    // Save all uploaded files after all processing is complete
+    // This ensures all files are saved together, not individually
+    setTimeout(() => {
+      if (profile?.email && user) {
+        setCsvData(currentCsvData => {
+          setSubscriptions(currentSubscriptions => {
+            setUploadedFiles(currentUploadedFiles => {
+              console.log('💾 Manual save after all CSV files processed (drag-drop)...', {
+                email: profile.email,
+                csvDataCount: currentCsvData.length,
+                subscriptionsCount: currentSubscriptions.length,
+                uploadedFilesCount: currentUploadedFiles.length
+              });
+              saveUserData(profile.email, {
+                csvData: currentCsvData,
+                subscriptions: currentSubscriptions,
+                uploadedFiles: currentUploadedFiles
+              });
+              return currentUploadedFiles;
+            });
+            return currentSubscriptions;
+          });
+          return currentCsvData;
+        });
+      }
+    }, 1000); // Wait 1 second after all files are processed to ensure state is fully updated
     
     // Show waitlist modal after processing (only if user hasn't interacted with it before)
     const hasInteractedWithModal = localStorage.getItem('broc-waitlist-modal-interacted') === 'true';
