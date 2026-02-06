@@ -993,38 +993,12 @@ const App: React.FC = () => {
     const otherCount = currentData.filter(tx => !tx.Category || tx.Category === 'Other').length;
     console.log(`📊 Found ${otherCount} transactions in "Other" category to enhance`);
     
-    if (otherCount === 0) {
-      console.log('✅ No transactions to enhance');
-      isEnhancingRef.current = false;
-      setIsClassifying(false);
-      return currentData;
-    }
-    
-    try {
-      // Enhance categories (pass API key for development fallback)
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const enhanced = await enhanceCategoriesWithLLM(currentData, apiKey);
-      const enhancedCount = enhanced.filter(tx => tx.Category && tx.Category !== 'Other').length - 
-                           currentData.filter(tx => tx.Category && tx.Category !== 'Other').length;
-      console.log(`✅ Enhanced ${enhancedCount} transactions with LLM`);
-      
-      // Update state with enhanced data
-      setCsvData(enhanced);
-      
-      // Recalculate subscriptions with new categories
-      const updatedSubscriptions = analyzeBankStatement(enhanced);
-      setSubscriptions(updatedSubscriptions);
-      
-      console.log(`✅ State updated: ${enhanced.length} transactions, ${updatedSubscriptions.length} subscriptions`);
-      isEnhancingRef.current = false;
-      setIsClassifying(false);
-      return enhanced;
-    } catch (err) {
-      console.error('❌ Failed to enhance categories:', err);
-      isEnhancingRef.current = false;
-      setIsClassifying(false);
-      return currentData;
-    }
+    // Temporarily skip enhancement of "Other" to improve performance.
+    // We keep this hook in place so we can re-enable LLM enhancement later if needed.
+    console.log('⏭ Skipping enhancement of "Other" transactions for now.');
+    isEnhancingRef.current = false;
+    setIsClassifying(false);
+    return currentData;
   };
 
   // Auto-enhance when new data is added (but not on initial load or after enhancement)
