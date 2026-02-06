@@ -446,9 +446,12 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
 
     // De-duplicate transactions by a stable key so we don't keep
     // inflating counts when there are duplicate rows in Supabase.
+    // NOTE: We exclude Category from the key because categories can change over time
+    // (e.g., via LLM enhancement) and shouldn't affect transaction identity.
     const seenTxKeys = new Set<string>();
     const csvData: Transaction[] = [];
     rawCsvData.forEach((tx) => {
+      // Build key from immutable transaction fields (exclude Category which can change)
       const key = [
         tx.Description,
         tx.Amount,
@@ -456,8 +459,7 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
         tx.Date,
         tx.Currency,
         tx.BankSource,
-        tx.Account,
-        tx.Category || ''
+        tx.Account
       ].join('::');
 
       if (seenTxKeys.has(key)) {
@@ -565,9 +567,11 @@ async function loadUserDataFromSupabase(email: string): Promise<UserData | null>
     });
 
     console.log('📂 [UserDataService] User data loaded from Supabase for', email, {
+      rawTransactionsFromDB: (transactions || []).length,
       csvDataCount: csvData.length,
       subscriptionsCount: subs.length,
-      uploadedFilesCount: files.length
+      uploadedFilesCount: files.length,
+      duplicatesFiltered: (transactions || []).length - csvData.length
     });
 
     return {
