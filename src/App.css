@@ -478,7 +478,8 @@ input[type="file"]:hover {
   position: sticky;
   top: 0;
   z-index: 100;
-  width: 100%;
+  width: calc(100% + 220px);
+  margin-left: -220px;
   box-sizing: border-box;
 }
 
@@ -597,6 +598,8 @@ input[type="file"]:hover {
     margin-left: 0;
   }
   .topbar {
+    width: 100%;
+    margin-left: 0;
     padding-left: 1rem;
     padding-right: 1rem;
   }

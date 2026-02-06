@@ -2019,7 +2019,7 @@ const App: React.FC = () => {
               <span />
               <span />
             </button>
-            <div className="topbar-title" style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 700 }}>Downsell by Broc.fi</div>
+            <div className="topbar-title" style={{ fontFamily: 'Georgia, "Times New Roman", serif', fontWeight: 700 }}>Downsell</div>
             <div className="topbar-right">
               {user && profile ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -2534,19 +2534,77 @@ const App: React.FC = () => {
                 <div className="big-numbers-row">
                   <div className="big-number-tile">
                     <div className="big-number-label">Total Transactions</div>
-                    <div className="big-number-value">{totalTransactions.toLocaleString()}</div>
+                    {isLoadingUserData ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40px' }}>
+                        <div style={{
+                          width: '28px',
+                          height: '28px',
+                          border: '3px solid rgba(255, 255, 255, 0.2)',
+                          borderTop: '3px solid #fff',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                      </div>
+                    ) : (
+                      <div className="big-number-value">{totalTransactions.toLocaleString()}</div>
+                    )}
                   </div>
                   <div className="big-number-tile">
                     <div className="big-number-label">Potential Subscriptions</div>
-                    <div className="big-number-value">{totalPotentialSubscriptions.toLocaleString()}</div>
+                    {isLoadingUserData ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40px' }}>
+                        <div style={{
+                          width: '28px',
+                          height: '28px',
+                          border: '3px solid rgba(255, 255, 255, 0.2)',
+                          borderTop: '3px solid #fff',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                      </div>
+                    ) : (
+                      <div className="big-number-value">{totalPotentialSubscriptions.toLocaleString()}</div>
+                    )}
                   </div>
                   <div className="big-number-tile">
                     <div className="big-number-label">Total Spend</div>
-                    <div className="big-number-value">{getCurrencySymbol(primaryCurrency)}{totalOutgoing.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    {isLoadingUserData ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40px' }}>
+                        <div style={{
+                          width: '28px',
+                          height: '28px',
+                          border: '3px solid rgba(255, 255, 255, 0.2)',
+                          borderTop: '3px solid #fff',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                      </div>
+                    ) : (
+                      <div className="big-number-value">
+                        {getCurrencySymbol(primaryCurrency)}
+                        {totalOutgoing.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
                   </div>
                   <div className="big-number-tile">
                     <div className="big-number-label">Subscription Spend</div>
-                    <div className="big-number-value">{getCurrencySymbol(primaryCurrency)}{totalSubscriptions.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                    {isLoadingUserData ? (
+                      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40px' }}>
+                        <div style={{
+                          width: '28px',
+                          height: '28px',
+                          border: '3px solid rgba(255, 255, 255, 0.2)',
+                          borderTop: '3px solid #fff',
+                          borderRadius: '50%',
+                          animation: 'spin 1s linear infinite'
+                        }} />
+                      </div>
+                    ) : (
+                      <div className="big-number-value">
+                        {getCurrencySymbol(primaryCurrency)}
+                        {totalSubscriptions.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </div>
+                    )}
                   </div>
                 </div>
                 {subscriptions.length > 0 && (
