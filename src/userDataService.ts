@@ -170,120 +170,71 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
     // clearUserData (delete my account) and deleteFileAndAssociatedData (remove file).
 
     // Insert transactions (with encryption of sensitive fields)
+    // NOTE: We no longer perform transaction-level de-duplication here.
+    // Every transaction in csvData will be encrypted and inserted. Duplicate
+    // prevention is handled at the CSV file level by blocking re-uploads of
+    // the same file in the UI.
     if (data.csvData.length > 0) {
       console.log('📝 [UserDataService] Preparing to save transactions:', data.csvData.length);
-      
-      // Check for existing transactions BEFORE encryption to avoid duplicates
-      // We need to decrypt existing transactions to compare with plaintext data
-      const { data: existingTransactionsRaw, error: existingError } = await supabase
-        .from('user_transactions')
-        .select('description, amount, date, account, bank_source')
-        .eq('user_email', email);
+      console.log('🔐 [UserDataService] Encrypting transaction data...');
 
-      if (existingError) {
-        console.warn('⚠️ [UserDataService] Could not load existing transactions for duplicate check:', existingError);
-      }
+      const transactions = await Promise.allSettled(
+        data.csvData.map(async (tx) => {
+          try {
+            // Encrypt sensitive fields
+            const encryptedDescription = await encryptData(tx.Description, email);
+            const encryptedOriginalData = tx.OriginalData 
+              ? await encryptData(tx.OriginalData, email)
+              : null;
 
-      // Decrypt existing transactions to build a comparison set
-      const existingKeys = new Set<string>();
-      if (existingTransactionsRaw && existingTransactionsRaw.length > 0) {
-        console.log('🔍 [UserDataService] Checking', existingTransactionsRaw.length, 'existing transactions for duplicates...');
-        await Promise.all(
-          existingTransactionsRaw.map(async (tx: any) => {
-            try {
-              // Decrypt description to compare with plaintext
-              const decryptedDescription = await decryptData(tx.description, email);
-              // Build key from plaintext fields (same format we'll use for new transactions)
-              const key = `${decryptedDescription}::${tx.amount}::${tx.date}::${tx.account}::${tx.bank_source}`;
-              existingKeys.add(key);
-            } catch (error) {
-              // If decryption fails, skip this transaction from the duplicate check
-              console.warn('⚠️ [UserDataService] Could not decrypt existing transaction for duplicate check:', error);
-            }
-          })
-        );
-        console.log('✅ [UserDataService] Built duplicate check set with', existingKeys.size, 'existing transaction keys');
-      }
-
-      // Filter out duplicates BEFORE encryption (using plaintext comparison)
-      const transactionsToSave = data.csvData.filter(tx => {
-        const key = `${tx.Description}::${tx.Amount}::${tx.Date}::${tx.Account}::${tx.BankSource}`;
-        const isDuplicate = existingKeys.has(key);
-        if (isDuplicate) {
-          console.log('⏭️ [UserDataService] Skipping duplicate transaction (already in Supabase):', {
-            Description: tx.Description.substring(0, 50),
-            Amount: tx.Amount,
-            Date: tx.Date,
-            Account: tx.Account
-          });
-        }
-        return !isDuplicate;
-      });
-
-      if (transactionsToSave.length === 0) {
-        console.log('📝 [UserDataService] No new transactions to insert (all are already in Supabase)');
-      } else {
-        console.log(`📝 [UserDataService] Filtered ${data.csvData.length - transactionsToSave.length} duplicate transactions, ${transactionsToSave.length} new to encrypt and insert`);
-
-        console.log('🔐 [UserDataService] Encrypting transaction data...');
-        const transactions = await Promise.allSettled(
-          transactionsToSave.map(async (tx) => {
-            try {
-              // Encrypt sensitive fields
-              const encryptedDescription = await encryptData(tx.Description, email);
-              const encryptedOriginalData = tx.OriginalData 
-                ? await encryptData(tx.OriginalData, email)
-                : null;
-
-              return {
-                user_email: email,
-                description: encryptedDescription, // Encrypted
-                amount: tx.Amount,
-                type: tx.Type,
-                date: tx.Date,
-                currency: tx.Currency,
-                balance: tx.Balance || null,
-                bank_source: tx.BankSource,
-                account: tx.Account,
-                category: tx.Category || null,
-                original_data: encryptedOriginalData // Encrypted
-              };
-            } catch (error) {
-              console.error('❌ [UserDataService] Failed to encrypt transaction:', {
-                Description: tx.Description,
-                Date: tx.Date,
-                Account: tx.Account,
-                error: error
-              });
-              throw error; // Re-throw to mark as rejected
-            }
-          })
-        );
-        
-        // Filter out failed encryptions and log them
-        const successfulTransactions: any[] = [];
-        const failedTransactions: number[] = [];
-        transactions.forEach((result, index) => {
-          if (result.status === 'fulfilled') {
-            successfulTransactions.push(result.value);
-          } else {
-            failedTransactions.push(index);
-            console.error('❌ [UserDataService] Transaction encryption failed at index', index, ':', result.reason);
+            return {
+              user_email: email,
+              description: encryptedDescription, // Encrypted
+              amount: tx.Amount,
+              type: tx.Type,
+              date: tx.Date,
+              currency: tx.Currency,
+              balance: tx.Balance || null,
+              bank_source: tx.BankSource,
+              account: tx.Account,
+              category: tx.Category || null,
+              original_data: encryptedOriginalData // Encrypted
+            };
+          } catch (error) {
+            console.error('❌ [UserDataService] Failed to encrypt transaction:', {
+              Description: tx.Description,
+              Date: tx.Date,
+              Account: tx.Account,
+              error: error
+            });
+            throw error; // Re-throw to mark as rejected
           }
-        });
-        
-        if (failedTransactions.length > 0) {
-          console.warn('⚠️ [UserDataService]', failedTransactions.length, 'transactions failed encryption and will be skipped:', failedTransactions);
-        }
-        
-        const newTransactions = successfulTransactions;
-        
-        console.log('✅ [UserDataService] All transactions encrypted, count:', newTransactions.length, '(failed:', failedTransactions.length, ')');
-
-        if (newTransactions.length === 0) {
-          console.log('📝 [UserDataService] No new transactions to insert after encryption');
+        })
+      );
+      
+      // Filter out failed encryptions and log them
+      const successfulTransactions: any[] = [];
+      const failedTransactions: number[] = [];
+      transactions.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+          successfulTransactions.push(result.value);
         } else {
+          failedTransactions.push(index);
+          console.error('❌ [UserDataService] Transaction encryption failed at index', index, ':', result.reason);
+        }
+      });
+      
+      if (failedTransactions.length > 0) {
+        console.warn('⚠️ [UserDataService]', failedTransactions.length, 'transactions failed encryption and will be skipped:', failedTransactions);
+      }
+      
+      const newTransactions = successfulTransactions;
+      
+      console.log('✅ [UserDataService] All transactions encrypted, count:', newTransactions.length, '(failed:', failedTransactions.length, ')');
 
+      if (newTransactions.length === 0) {
+        console.log('📝 [UserDataService] No transactions to insert after encryption');
+      } else {
         // Insert in batches of 1000 to avoid payload size limits
         const batchSize = 1000;
         let totalInserted = 0;
@@ -299,10 +250,9 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
           totalInserted += insertedData?.length || 0;
           console.log(`✅ [UserDataService] Batch ${Math.floor(i/batchSize) + 1} inserted:`, insertedData?.length || 0, 'records');
         }
-        console.log('✅ [UserDataService] Transactions saved. Total inserted:', totalInserted, 'records (expected:', newTransactions.length, ', original:', data.csvData.length, ')');
+        console.log('✅ [UserDataService] Transactions saved. Total inserted:', totalInserted, 'records (original csvData length:', data.csvData.length, ')');
         if (totalInserted !== newTransactions.length) {
           console.warn('⚠️ [UserDataService] Mismatch: Expected to insert', newTransactions.length, 'transactions but inserted', totalInserted);
-        }
         }
       }
 
