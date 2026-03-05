@@ -255,6 +255,7 @@ async function saveUserDataToSupabase(email: string, data: UserData): Promise<bo
           console.warn('⚠️ [UserDataService] Mismatch: Expected to insert', newTransactions.length, 'transactions but inserted', totalInserted);
         }
       }
+    }
 
     // Insert subscriptions (with encryption of sensitive fields)
     if (data.subscriptions.length > 0) {
