@@ -787,13 +787,19 @@ const App: React.FC = () => {
             isLoadingDataRef.current = true; // Set flag to prevent auto-save during load
             loadUserData(profileData.email).then((savedData) => {
               if (savedData) {
+                const restoredCsvData = savedData.csvData || [];
                 console.log('🔄 Restoring user data:', {
-                  csvData: savedData.csvData?.length || 0,
-                  subscriptions: savedData.subscriptions?.length || 0,
+                  csvData: restoredCsvData.length,
+                  // We ignore stored subscriptions for calculations and
+                  // re-derive them from transactions to keep logic consistent.
+                  subscriptionsFromStorage: savedData.subscriptions?.length || 0,
                   uploadedFiles: savedData.uploadedFiles?.length || 0
                 });
-                setCsvData(savedData.csvData || []);
-                setSubscriptions(savedData.subscriptions || []);
+                setCsvData(restoredCsvData);
+                // Recalculate subscriptions from the restored transactions so that
+                // all derived fields (frequency, score, etc.) are present.
+                const recalculatedSubscriptions = analyzeBankStatement(restoredCsvData);
+                setSubscriptions(recalculatedSubscriptions);
                 // Note: uploadedFiles can't be fully restored (File objects can't be serialized),
                 // but metadata is preserved for display purposes. The actual transaction data
                 // is in csvData, which is what matters.
