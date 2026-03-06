@@ -1495,32 +1495,6 @@ const App: React.FC = () => {
     }, 0);
   }, [csvData]);
 
-  // Subset of subscriptions used for high-level "Subscription Spend" figures.
-  // This aims to capture only strong, recurring-style subscriptions rather than
-  // every outgoing transaction grouped by description.
-  const strongSubscriptions = useMemo(() => {
-    return subscriptions.filter((sub) => {
-      const isDebitOnly =
-        sub.total < 0 &&
-        sub.average < 0 &&
-        sub.maxAmount < 0;
-
-      const hasGoodScore = sub.subscriptionScore >= 0.8;
-
-      const hasRegularFrequency =
-        (sub.frequency && sub.frequency >= 1) ||
-        (sub.avgDaysBetween && sub.avgDaysBetween <= 31);
-
-      return isDebitOnly && hasGoodScore && hasRegularFrequency;
-    });
-  }, [subscriptions]);
-
-  const totalSubscriptions = useMemo(() => {
-    return strongSubscriptions.reduce((sum, sub) => sum + Math.abs(sub.total), 0);
-  }, [strongSubscriptions]);
-
-  const totalNonSubscriptions = Math.max(0, totalOutgoing - totalSubscriptions);
-
   // Top 15 outgoings sorted by total spend
   const top15Outgoings = useMemo(() => {
     return subscriptions
@@ -1528,16 +1502,6 @@ const App: React.FC = () => {
       .sort((a, b) => Math.abs(b.total) - Math.abs(a.total))
       .slice(0, 15);
   }, [subscriptions]);
-
-  const pieData = {
-    labels: ['Subscriptions', 'Non-Subscriptions'],
-    datasets: [
-      {
-        data: [totalSubscriptions, totalNonSubscriptions],
-        backgroundColor: ['#2d8cff', '#f4b400'],
-      },
-    ],
-  };
 
   // Calculate average spend per day of month (1-31), then cumulative sum
   const avgSpendByDay = useMemo(() => {
@@ -1601,7 +1565,7 @@ const App: React.FC = () => {
   // Identify high-confidence subscriptions (same price for 6 months straight)
   const highConfidenceSubscriptions = useMemo(() => {
     return subscriptions.filter((sub) => {
-    const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [], accounts: new Set<string>() };
+      const raw = subscriptionRawData[sub.description] || { dates: [], amounts: [], accounts: new Set<string>() };
       if (raw.amounts.length < 6) return false; // Need at least 6 payments
       
       // Sort by date
@@ -1610,6 +1574,7 @@ const App: React.FC = () => {
       
       // Get the last 6 payments
       const last6 = sorted.slice(-6);
+      if (last6.length === 0) return false;
       
       // Check if all 6 have the same amount (within 0.01 tolerance for rounding)
       const firstAmount = Math.abs(last6[0].amount);
@@ -1626,6 +1591,25 @@ const App: React.FC = () => {
       return allSame;
     }).sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
   }, [subscriptions, subscriptionRawData]);
+
+  // Use the same high-confidence set that powers the "High confidence subscriptions"
+  // table for the Subscription Spend figure, so behaviour is consistent across
+  // first upload and subsequent logins.
+  const totalSubscriptions = useMemo(() => {
+    return highConfidenceSubscriptions.reduce((sum, sub) => sum + Math.abs(sub.total), 0);
+  }, [highConfidenceSubscriptions]);
+
+  const totalNonSubscriptions = Math.max(0, totalOutgoing - totalSubscriptions);
+
+  const pieData = {
+    labels: ['Subscriptions', 'Non-Subscriptions'],
+    datasets: [
+      {
+        data: [totalSubscriptions, totalNonSubscriptions],
+        backgroundColor: ['#2d8cff', '#f4b400'],
+      },
+    ],
+  };
 
   // Time-series data for total spend and subscription spend over time
   const spendOverTime = useMemo(() => {
