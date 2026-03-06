@@ -920,11 +920,12 @@ const App: React.FC = () => {
           uploadedFilesCount: uploadedFiles.length
         });
         // IMPORTANT:
-        // - We only auto-save csvData + subscriptions.
+        // - We only auto-save subscriptions (csvData is left empty here so we don't
+        //   re-insert transactions on every auto-save).
         // - Uploaded file metadata is saved explicitly when a new CSV is uploaded.
-        //   This prevents duplicate file records on each login/logout cycle.
+        //   This prevents duplicate file records and duplicate transactions.
         saveUserData(profile.email, {
-          csvData,
+          csvData: [],
           subscriptions,
           uploadedFiles: []
         });
@@ -1325,7 +1326,7 @@ const App: React.FC = () => {
         setCsvData(currentCsvData => {
           setSubscriptions(currentSubscriptions => {
             setUploadedFiles(currentUploadedFiles => {
-              console.log('💾 Manual save after all CSV files processed...', {
+                console.log('💾 Manual save after all CSV files processed...', {
                 email: profile.email,
                 csvDataCount: currentCsvData.length,
                 subscriptionsCount: currentSubscriptions.length,
@@ -1420,7 +1421,7 @@ const App: React.FC = () => {
         setCsvData(currentCsvData => {
           setSubscriptions(currentSubscriptions => {
             setUploadedFiles(currentUploadedFiles => {
-              console.log('💾 Manual save after all CSV files processed (drag-drop)...', {
+                console.log('💾 Manual save after all CSV files processed (drag-drop)...', {
                 email: profile.email,
                 csvDataCount: currentCsvData.length,
                 subscriptionsCount: currentSubscriptions.length,
@@ -2129,14 +2130,7 @@ const App: React.FC = () => {
                   <button 
                     className="optimize-btn" 
                     onClick={() => {
-                      // Save data before logout (in case of any unsaved changes)
-                      if (profile?.email) {
-                        saveUserData(profile.email, {
-                          csvData,
-                          subscriptions,
-                          uploadedFiles
-                        });
-                      }
+                      // Log out without re-saving all transactions (they are already saved on upload/delete)
                       // Clear UI state and remove saved session
                       localStorage.removeItem('google-oauth-user');
                       setUser(null);
@@ -3810,11 +3804,11 @@ const App: React.FC = () => {
                             const recalculatedSubscriptions = analyzeBankStatement(updatedCsvData);
                             setSubscriptions(recalculatedSubscriptions);
                             
-                            // Save updated state
+                            // Save updated subscriptions only (transactions/files are already in sync via Supabase delete)
                             await saveUserData(profile.email, {
-                              csvData: updatedCsvData,
+                              csvData: [],
                               subscriptions: recalculatedSubscriptions,
-                              uploadedFiles: updatedFiles
+                              uploadedFiles: []
                             });
                             
                             alert(`File "${fileName}" and all associated data have been deleted.`);
