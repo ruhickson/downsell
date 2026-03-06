@@ -1489,9 +1489,29 @@ const App: React.FC = () => {
     }, 0);
   }, [csvData]);
 
-  const totalSubscriptions = useMemo(() => {
-    return subscriptions.reduce((sum, sub) => sum + Math.abs(sub.total), 0);
+  // Subset of subscriptions used for high-level "Subscription Spend" figures.
+  // This aims to capture only strong, recurring-style subscriptions rather than
+  // every outgoing transaction grouped by description.
+  const strongSubscriptions = useMemo(() => {
+    return subscriptions.filter((sub) => {
+      const isDebitOnly =
+        sub.total < 0 &&
+        sub.average < 0 &&
+        sub.maxAmount < 0;
+
+      const hasGoodScore = sub.subscriptionScore >= 0.8;
+
+      const hasRegularFrequency =
+        (sub.frequency && sub.frequency >= 1) ||
+        (sub.avgDaysBetween && sub.avgDaysBetween <= 31);
+
+      return isDebitOnly && hasGoodScore && hasRegularFrequency;
+    });
   }, [subscriptions]);
+
+  const totalSubscriptions = useMemo(() => {
+    return strongSubscriptions.reduce((sum, sub) => sum + Math.abs(sub.total), 0);
+  }, [strongSubscriptions]);
 
   const totalNonSubscriptions = Math.max(0, totalOutgoing - totalSubscriptions);
 
